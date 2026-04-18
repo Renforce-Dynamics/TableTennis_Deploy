@@ -29,6 +29,7 @@ class FSMCommand(Enum):
     SKILL_2 = 6
     SKILL_3 = 7
     SKILL_4 = 8
+    TABLE_TENNIS = 9
     
     
     

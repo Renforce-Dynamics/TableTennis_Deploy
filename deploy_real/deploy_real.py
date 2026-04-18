@@ -114,6 +114,8 @@ class Controller:
             #     self.state_cmd.skill_cmd = FSMCommand.SKILL_3
             # if self.remote_controller.is_button_pressed(KeyMap.Y) and self.remote_controller.is_button_pressed(KeyMap.L1):
             #     self.state_cmd.skill_cmd = FSMCommand.SKILL_4
+            if self.remote_controller.is_button_pressed(KeyMap.B) and self.remote_controller.is_button_pressed(KeyMap.L1):
+                self.state_cmd.skill_cmd = FSMCommand.TABLE_TENNIS
             
             self.state_cmd.vel_cmd[0] =  self.remote_controller.ly
             self.state_cmd.vel_cmd[1] =  self.remote_controller.lx * -1
@@ -134,6 +136,12 @@ class Controller:
             self.state_cmd.gravity_ori = gravity_orientation.copy()
             self.state_cmd.ang_vel = ang_vel.copy()
             self.state_cmd.base_quat = quat
+
+            # Set default values for table tennis policy
+            # TODO: Replace with actual perception system
+            self.state_cmd.base_pos = np.array([0.0, 0.0, 0.76], dtype=np.float32)
+            self.state_cmd.base_lin_vel = np.zeros(3, dtype=np.float32)
+            self.state_cmd.ball_pos = np.array([3.5, -0.2, 1.0], dtype=np.float32)
             
             self.FSM_controller.run()
             policy_output_action = self.policy_output.actions.copy()

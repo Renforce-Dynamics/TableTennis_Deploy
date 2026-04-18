@@ -21,6 +21,13 @@ def pd_control(target_q, q, kp, target_dq, dq, kd):
     """Calculates torques from position commands"""
     return (target_q - q) * kp + (target_dq - dq) * kd
 
+def get_ball_pos(data):
+    """Get ball position from simulation, returns fallback if ball not found."""
+    try:
+        return np.array(data.body("ball").xpos, dtype=np.float32)
+    except:
+        return np.array([3.5, -0.2, 1.0], dtype=np.float32)
+
 if __name__ == "__main__":
     current_dir = os.path.dirname(os.path.abspath(__file__))
     mujoco_yaml_path = os.path.join(current_dir, "config", "mujoco.yaml")
@@ -29,7 +36,7 @@ if __name__ == "__main__":
         xml_path = os.path.join(PROJECT_ROOT, config["xml_path"])
         simulation_dt = config["simulation_dt"]
         control_decimation = config["control_decimation"]
-        
+
     m = mujoco.MjModel.from_xml_path(xml_path)
     d = mujoco.MjData(m)
     m.opt.timestep = simulation_dt
@@ -39,7 +46,7 @@ if __name__ == "__main__":
     kps = np.zeros(num_joints, dtype=np.float32)
     kds = np.zeros(num_joints, dtype=np.float32)
     sim_counter = 0
-    
+
     state_cmd = StateAndCmd(num_joints)
     policy_output = PolicyOutput(num_joints)
     FSM_controller = FSM(state_cmd, policy_output)
@@ -68,6 +75,8 @@ if __name__ == "__main__":
                     state_cmd.skill_cmd = FSMCommand.SKILL_3
                 if joystick.is_button_released(JoystickButton.Y) and joystick.is_button_pressed(JoystickButton.L1):
                     state_cmd.skill_cmd = FSMCommand.SKILL_4
+                if joystick.is_button_released(JoystickButton.B) and joystick.is_button_pressed(JoystickButton.L1):
+                    state_cmd.skill_cmd = FSMCommand.TABLE_TENNIS
                 
                 state_cmd.vel_cmd[0] = -joystick.get_axis_value(1)
                 state_cmd.vel_cmd[1] = -joystick.get_axis_value(0)
@@ -85,11 +94,12 @@ if __name__ == "__main__":
                     dqj = d.qvel[6:]
                     base_pos = d.qpos[0:3]
                     quat = d.qpos[3:7]
-                    
+
                     base_lin_vel = d.qvel[0:3]
-                    omega = d.qvel[3:6] 
+                    omega = d.qvel[3:6]
                     gravity_orientation = get_gravity_orientation(quat)
-                    
+                    ball_pos = get_ball_pos(d)
+
                     state_cmd.q = qj.copy()
                     state_cmd.dq = dqj.copy()
                     state_cmd.base_pos = base_pos.copy()
@@ -97,6 +107,7 @@ if __name__ == "__main__":
                     state_cmd.gravity_ori = gravity_orientation.copy()
                     state_cmd.base_quat = quat.copy()
                     state_cmd.ang_vel = omega.copy()
+                    state_cmd.ball_pos = ball_pos.copy()
                     
                     FSM_controller.run()
                     policy_output_action = policy_output.actions.copy()
