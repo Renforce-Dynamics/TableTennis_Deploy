@@ -29,6 +29,7 @@ class FSMCommand(Enum):
     SKILL_2 = 6
     SKILL_3 = 7
     SKILL_4 = 8
+    SKILL_5 = 9
     
     
     
@@ -53,5 +54,4 @@ def scale_values(values, target_ranges):
         scaled_val = (val + 1) * (new_max - new_min) / 2 + new_min
         scaled.append(scaled_val)
     return np.array(scaled)
-
 

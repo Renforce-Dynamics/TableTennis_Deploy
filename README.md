@@ -23,55 +23,57 @@
 
 ## 1. Create a Virtual Environment
 
-It is recommended to run training or deployment programs in a virtual environment. We suggest using Conda to create one.
+It is recommended to run training or deployment programs in a virtual environment. We suggest using `uv` to manage the project environment.
 
-### 1.1 Create a New Environment
+### 1.1 Create the Project Environment
 
-Use the following command to create a virtual environment:
+Use the following command in the repository root:
 ```bash
-conda create -n robomimic python=3.8
+uv venv --python 3.8
 ```
 
 ### 1.2 Activate the Virtual Environment
 
 ```bash
-conda activate robomimic
+source .venv/bin/activate
 ```
 
 ---
 
 ## 2. Install Dependencies
 
-### 2.1 Install PyTorch
-PyTorch is a neural network computation framework used for model training and inference. Install it with the following command:
-```bash
-conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 pytorch-cuda=12.1 -c pytorch -c nvidia
-```
-
-### 2.2 Install RoboMimic_Deploy
-
-#### 2.2.1 Download
+### 2.1 Download
 Clone the repository via git:
 
 ```bash
 git clone https://github.com/ccrpRepo/RoboMimic_Deploy.git
 ```
 
-#### 2.2.2 Install Components
+### 2.2 Install RoboMimic_Deploy Dependencies
 
 Navigate to the directory and install:
 ```bash
 cd RoboMimic_Deploy
-pip install numpy==1.20.0
-pip install onnx onnxruntime
+uv sync
 ```
 
-#### 2.2.3 Install unitree_sdk2_python
+If you want to run Mujoco simulation, install the simulation group as well:
+
+```bash
+uv sync --group sim
+```
+
+If you need CUDA PyTorch wheels instead of the default PyPI wheels, reinstall the torch packages with the PyTorch index after `uv sync`.
+The `uv` setup uses a newer NumPy line than the original README because current `onnxruntime` builds for Python 3.8 require `numpy>=1.21.6`.
+
+### 2.3 Install unitree_sdk2_python
+
+The real robot scripts depend on Unitree's Python SDK, which lives outside this repository. After cloning it, install it into the same `uv` environment:
 
 ```bash
 git clone https://github.com/unitreerobotics/unitree_sdk2_python.git
 cd unitree_sdk2_python
-pip install -e .
+uv pip install -e .
 ```
 ---
 ## Running the Code

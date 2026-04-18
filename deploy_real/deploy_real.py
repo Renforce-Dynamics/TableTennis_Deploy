@@ -6,6 +6,7 @@ from common.path_config import PROJECT_ROOT
 from common.ctrlcomp import *
 from FSM.FSM import *
 from typing import Union
+import argparse
 import numpy as np
 import time
 import os
@@ -28,8 +29,9 @@ from config import Config
 
 
 class Controller:
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, args: argparse.Namespace):
         self.config = config
+        self.args = args
         self.remote_controller = RemoteController()
         self.num_joints = config.num_joints
         self.control_dt = config.control_dt
@@ -110,8 +112,8 @@ class Controller:
                 self.state_cmd.skill_cmd = FSMCommand.SKILL_1
             if self.remote_controller.is_button_pressed(KeyMap.Y) and self.remote_controller.is_button_pressed(KeyMap.R1):
                 self.state_cmd.skill_cmd = FSMCommand.SKILL_2
-            # if self.remote_controller.is_button_pressed(KeyMap.B) and self.remote_controller.is_button_pressed(KeyMap.R1):
-            #     self.state_cmd.skill_cmd = FSMCommand.SKILL_3
+            if self.remote_controller.is_button_pressed(KeyMap.B) and self.remote_controller.is_button_pressed(KeyMap.R1):
+                self.state_cmd.skill_cmd = FSMCommand.SKILL_5
             # if self.remote_controller.is_button_pressed(KeyMap.Y) and self.remote_controller.is_button_pressed(KeyMap.L1):
             #     self.state_cmd.skill_cmd = FSMCommand.SKILL_4
             
@@ -134,6 +136,11 @@ class Controller:
             self.state_cmd.gravity_ori = gravity_orientation.copy()
             self.state_cmd.ang_vel = ang_vel.copy()
             self.state_cmd.base_quat = quat
+            # Real robot deployment currently uses fallback values for the
+            # global root state and ball observation expected by table tennis.
+            self.state_cmd.base_pos = np.array([0.0, 0.0, self.args.base_height], dtype=np.float32)
+            self.state_cmd.base_lin_vel = np.zeros(3, dtype=np.float32)
+            self.state_cmd.ball_pos = np.array(self.args.ball_pos, dtype=np.float32)
             
             self.FSM_controller.run()
             policy_output_action = self.policy_output.actions.copy()
@@ -166,14 +173,33 @@ class Controller:
             pass
         
         pass
-        
-        
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Deploy multi-policy control on the real robot.")
+    parser.add_argument(
+        "--ball-pos",
+        type=float,
+        nargs=3,
+        default=[3.5, -0.2, 1.0],
+        help="Fallback constant ball position used by the table tennis policy.",
+    )
+    parser.add_argument(
+        "--base-height",
+        type=float,
+        default=0.76,
+        help="Fallback base height used when no global state estimator is connected.",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
+    args = parse_args()
     config = Config()
     # Initialize DDS communication
     ChannelFactoryInitialize(0, config.net)
     
-    controller = Controller(config)
+    controller = Controller(config, args)
     
     while True:
         try:
