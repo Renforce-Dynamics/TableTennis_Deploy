@@ -107,16 +107,27 @@ def reset_simulation(model, data, start_policy, robot_qpos_slice, num_joints):
     if initial_policy != FSMStateName.PASSIVE:
         fsm_controller.get_next_policy(initial_policy)
         fsm_controller.cur_policy.enter()
-        print("current policy is ", fsm_controller.cur_policy.name_str)
+        print(f"Initialized to policy: {fsm_controller.cur_policy.name_str}")
     else:
         fsm_controller.cur_policy.enter()
+        print("Initialized to policy: PASSIVE")
 
-    print("Simulation reset to initial state.")
     return state_cmd, policy_output, fsm_controller, policy_output_action, kps, kds, sim_counter
 
 
+def switch_policy(fsm_controller, new_policy_state):
+    """Switch to a new policy state"""
+    if fsm_controller.cur_policy.name == new_policy_state:
+        print(f"Already in {fsm_controller.cur_policy.name_str}")
+        return
+
+    fsm_controller.get_next_policy(new_policy_state)
+    fsm_controller.cur_policy.enter()
+    print(f"Switched to policy: {fsm_controller.cur_policy.name_str}")
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run Mujoco deployment without requiring a joystick.")
+    parser = argparse.ArgumentParser(description="Run Mujoco deployment with keyboard state switching.")
     parser.add_argument(
         "--start-policy",
         default="passive",
@@ -156,14 +167,46 @@ if __name__ == "__main__":
     robot_qpos_slice, robot_qvel_slice = get_robot_state_slices(m)
 
     reset_requested = [False]
+    policy_switch_requested = [None]
+
+    # Keyboard mapping for policy switching
+    KEY_MAP = {
+        'p': ('passive', FSMStateName.PASSIVE),
+        'f': ('fixedpose', FSMStateName.FIXEDPOSE),
+        'l': ('loco', FSMStateName.LOCOMODE),
+        'd': ('dance', FSMStateName.SKILL_Dance),
+        'k': ('kungfu', FSMStateName.SKILL_KungFu),
+        'c': ('kick', FSMStateName.SKILL_KICK),
+        '2': ('kungfu2', FSMStateName.SKILL_KungFu2),
+        'b': ('beyond_mimic', FSMStateName.SKILL_BEYOND_MIMIC),
+        't': ('table_tennis', FSMStateName.SKILL_TABLE_TENNIS),
+    }
 
     def key_callback(keycode):
         try:
             key = chr(keycode).lower()
         except ValueError:
             return
+
         if key == "r":
             reset_requested[0] = True
+        elif key in KEY_MAP:
+            policy_name, policy_state = KEY_MAP[key]
+            policy_switch_requested[0] = (policy_name, policy_state)
+        elif key == 'h':
+            print("\n=== Keyboard Controls ===")
+            print("R: Reset simulation")
+            print("P: Passive mode")
+            print("F: Fixed pose")
+            print("L: Locomotion mode")
+            print("D: Dance")
+            print("K: Kung Fu")
+            print("C: Kick")
+            print("2: Kung Fu 2")
+            print("B: Beyond Mimic")
+            print("T: Table Tennis")
+            print("H: Show this help")
+            print("========================\n")
 
     (
         state_cmd,
@@ -175,11 +218,17 @@ if __name__ == "__main__":
         sim_counter,
     ) = reset_simulation(m, d, args.start_policy, robot_qpos_slice, num_joints)
 
+    # Print keyboard controls at startup
+    print("\n=== Keyboard Controls ===")
+    print("Press 'H' for help at any time")
+    print("========================\n")
+
     running = True
     with mujoco.viewer.launch_passive(m, d, key_callback=key_callback) as viewer:
         while viewer.is_running() and running:
             step_start = time.time()
             try:
+                # Handle reset request
                 if reset_requested[0]:
                     with viewer.lock():
                         (
@@ -192,6 +241,13 @@ if __name__ == "__main__":
                             sim_counter,
                         ) = reset_simulation(m, d, args.start_policy, robot_qpos_slice, num_joints)
                     reset_requested[0] = False
+
+                # Handle policy switch request
+                if policy_switch_requested[0] is not None:
+                    policy_name, policy_state = policy_switch_requested[0]
+                    with viewer.lock():
+                        switch_policy(FSM_controller, policy_state)
+                    policy_switch_requested[0] = None
 
                 state_cmd.vel_cmd[:] = 0.0
 

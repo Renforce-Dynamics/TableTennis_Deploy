@@ -416,6 +416,22 @@ wheels = [
 ]
 
 [[package]]
+name = "pygame"
+version = "2.6.1"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/49/cc/08bba60f00541f62aaa252ce0cfbd60aebd04616c0b9574f755b583e45ae/pygame-2.6.1.tar.gz", hash = "sha256:56fb02ead529cee00d415c3e007f75e0780c655909aaa8e8bf616ee09c9feb1f", size = 14808125, upload-time = "2024-09-29T13:41:34.698Z" }
+wheels = [
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/7c/03/8a99bbe20925ea0e1fe77ccb4bbe0168f6f9d0fcf64d8f45f02e9bcfeb7d/pygame-2.6.1-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:97ac4e13847b6b293ecaffa5ffce9886c98d09c03309406931cc592f0cea6366", size = 12964830, upload-time = "2024-09-29T14:27:29.431Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/d2/50/caae48e97e3e9ac8970caf0763c373f4f70b5bc7827ef5f967fdff777da1/pygame-2.6.1-cp38-cp38-macosx_11_0_arm64.whl", hash = "sha256:d1a7f2b66ac2e4c9583b6d4c6d6f346fb10a3392c04163f537061f86a448ed5c", size = 12376818, upload-time = "2024-09-29T14:27:35.648Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/60/15/7cbb41f46678555c7aab6b49eddac38b23e426b1a4244af520b826bbcb57/pygame-2.6.1-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ac3f033d2be4a9e23660a96afe2986df3a6916227538a6a0061bc218c5088507", size = 13614577, upload-time = "2024-09-29T11:10:59.629Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/e1/0a/57dcdec74445f3fdf3d7dcc786ff38597592a458e8bbfc540aa8a6cb4ce2/pygame-2.6.1-cp38-cp38-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:a1bf7ab5311bbced70320f1a56701650b4c18231343ae5af42111eea91e0949a", size = 14308698, upload-time = "2024-09-29T11:40:19.161Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/e8/3b/070a1bbac12a6914ea08a0b8f26bb349638233a56c111b5d4561f716f8f2/pygame-2.6.1-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:21160d9093533eb831f1b708e630706e5ac16b30750571ec27bc3b8364814f38", size = 13982722, upload-time = "2024-09-29T11:40:22.367Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/af/9e/f4fd29d8a41ef19cbf573a1b0bafc4221aae78f610d307033e1250e1cca3/pygame-2.6.1-cp38-cp38-win32.whl", hash = "sha256:7bffdd3eaf394d9645331d1c3a5df9d782ebcc3c5a78f3b657c7879a828dd111", size = 10255798, upload-time = "2024-09-29T11:32:41.394Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/66/a8/503d52d2a4fe1463207b80661d3fe7793346e515f369abe2c3a6552fec11/pygame-2.6.1-cp38-cp38-win_amd64.whl", hash = "sha256:818b4eaec9c4acb6ac64805d4ca8edd4062bebca77bd815c18739fe2842c97e9", size = 10623008, upload-time = "2024-09-29T12:04:58.482Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/06/56/ea9c785258da9f6da939abe8f961c8ce09a8177524a78f94932fbcb2c5d3/pygame-2.6.1-pp38-pypy38_pp73-macosx_10_9_x86_64.whl", hash = "sha256:b7f9f8e6f76de36f4725175d686601214af362a4f30614b4dae2240198e72e6f", size = 12789119, upload-time = "2024-09-29T14:28:18.976Z" },
+]
+
+[[package]]
 name = "pyopengl"
 version = "3.1.10"
 source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
@@ -457,6 +473,7 @@ dependencies = [
     { name = "numpy" },
     { name = "onnx" },
     { name = "onnxruntime" },
+    { name = "pygame" },
     { name = "pyyaml" },
     { name = "torch" },
     { name = "torchaudio" },
@@ -469,6 +486,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.21.6,<2.0" },
     { name = "onnx", specifier = ">=1.12.0" },
     { name = "onnxruntime", specifier = ">=1.17.0" },
+    { name = "pygame", specifier = ">=2.5.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "torch", specifier = "==2.3.1", index = "https://download.pytorch.org/whl/cu121" },
     { name = "torchaudio", specifier = "==2.3.1", index = "https://download.pytorch.org/whl/cu121" },
