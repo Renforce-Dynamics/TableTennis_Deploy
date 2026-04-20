@@ -61,7 +61,7 @@ def initialize_ball_state(model, data):
 
     qpos_adr = model.jnt_qposadr[ball_joint_id]
     qvel_adr = model.jnt_dofadr[ball_joint_id]
-    data.qpos[qpos_adr:qpos_adr + 7] = np.array([3.5, -0.2, 1.0, 1.0, 0.0, 0.0, 0.0], dtype=np.float64)
+    data.qpos[qpos_adr:qpos_adr + 7] = np.array([3.5, 4, 1.0, 1.0, 0.0, 0.0, 0.0], dtype=np.float64)
     data.qvel[qvel_adr:qvel_adr + 6] = np.array([-4.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
 
 

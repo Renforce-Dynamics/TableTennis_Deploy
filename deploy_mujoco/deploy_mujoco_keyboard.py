@@ -61,7 +61,7 @@ def initialize_ball_state(model, data):
 
     qpos_adr = model.jnt_qposadr[ball_joint_id]
     qvel_adr = model.jnt_dofadr[ball_joint_id]
-    data.qpos[qpos_adr:qpos_adr + 7] = np.array([3.5, -0.2, 1.0, 1.0, 0.0, 0.0, 0.0], dtype=np.float64)
+    data.qpos[qpos_adr:qpos_adr + 7] = np.array([8, -0.2, 1.0, 1.0, 0.0, 0.0, 0.0], dtype=np.float64)
     data.qvel[qvel_adr:qvel_adr + 6] = np.array([-4.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
 
 
@@ -79,11 +79,13 @@ def quat_rotate_inverse(quat_wxyz, vec_xyz):
 
 
 def apply_initial_configuration(model, data, start_policy, robot_qpos_slice):
+    # Always initialize ball state for testing
+    initialize_ball_state(model, data)
+
     if start_policy == "table_tennis":
         data.qpos[2] = 0.76
         data.qpos[robot_qpos_slice] = load_default_joint_pos()
         data.qvel[:] = 0.0
-        initialize_ball_state(model, data)
     mujoco.mj_forward(model, data)
 
 

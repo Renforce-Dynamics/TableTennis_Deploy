@@ -163,16 +163,29 @@ python deploy_real/deploy_real.py
 
 ### 乒乓球专用部署
 
-使用自定义参数进行专用乒乓球部署：
+专用乒乓球部署程序：
 ```bash
-python deploy_real/deploy_real_table_tennis.py \
-  --ball-pos 3.5 -0.2 1.0 \
-  --base-height 0.76 \
-  --max-delta 0.12 \
-  --ramp-time 2.0
+python deploy_real/deploy_real_table_tennis.py
 ```
 
-**注意：** 当前实现使用**回退球位置**值。生产部署时，需集成感知系统实时更新 `state_cmd.ball_pos`
+#### 遥控器按键映射 (deploy_real_table_tennis.py)
+| 按键组合           | 动作                           | 说明                                  |
+|-------------------|--------------------------------|---------------------------------------|
+| **F1**            | 进入被动模式                    | 阻尼保护模式                           |
+| **Start**         | 进入固定姿态                    | 位置控制重置                           |
+| **B + L1**        | 进入乒乓球模式                  | 激活乒乓球策略                         |
+| **Select**        | 退出程序                        | 终止程序并切换到阻尼模式                |
+
+#### 重要说明
+- **启动状态**：机器人启动时处于 **PassiveMode**（安全阻尼状态）
+- **推荐操作流程**：
+  1. 启动程序（机器人处于 PassiveMode）
+  2. 按 **Start** 进入 FixedPose（位置重置）
+  3. 按 **B + L1** 激活乒乓球模式
+  4. 如需返回安全状态，按 **F1** 回到 PassiveMode
+  5. 按 **Select** 退出程序
+
+**注意：** 当前实现使用**回退球位置**值（`[3.5, -0.2, 1.0]`）。生产部署时，需集成感知系统实时更新 `state_cmd.ball_pos`
 
 ---
 ## 6. 注意事项

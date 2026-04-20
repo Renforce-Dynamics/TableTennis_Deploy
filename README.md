@@ -154,16 +154,29 @@ python deploy_real/deploy_real.py
 
 ### Table Tennis Specific Deployment
 
-For dedicated table tennis deployment with custom parameters:
+For dedicated table tennis deployment:
 ```bash
-python deploy_real/deploy_real_table_tennis.py \
-  --ball-pos 3.5 -0.2 1.0 \
-  --base-height 0.76 \
-  --max-delta 0.12 \
-  --ramp-time 2.0
+python deploy_real/deploy_real_table_tennis.py
 ```
 
-**Note:** The current implementation uses **fallback ball position** values. For production deployment, integrate a perception system to update `state_cmd.ball_pos` in real-time.
+#### Remote Controller Mapping (deploy_real_table_tennis.py)
+| Button Combination | Action                          | Description                           |
+|-------------------|---------------------------------|---------------------------------------|
+| **F1**            | Enter PassiveMode               | Damping protection mode               |
+| **Start**         | Enter FixedPose                 | Position control reset                |
+| **B + L1**        | Enter Table Tennis Mode         | Activate table tennis policy          |
+| **Select**        | Exit Program                    | Terminate and switch to damping       |
+
+#### Important Notes
+- **Starting State**: Robot starts in **PassiveMode** (safe damping state)
+- **Recommended Workflow**:
+  1. Start the program (robot in PassiveMode)
+  2. Press **Start** to enter FixedPose (position reset)
+  3. Press **B + L1** to activate Table Tennis mode
+  4. Press **F1** to return to PassiveMode if needed
+  5. Press **Select** to exit the program
+
+**Note:** The current implementation uses **fallback ball position** values (`[3.5, -0.2, 1.0]`). For production deployment, integrate a perception system to update `state_cmd.ball_pos` in real-time.
 
 ---
 ## 6. Important Notes
