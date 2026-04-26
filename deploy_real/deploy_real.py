@@ -28,6 +28,22 @@ from common.remote_controller import RemoteController, KeyMap
 from config import Config
 
 
+def get_policy_state(policy_name: str):
+    policy_map = {
+        "passive": FSMStateName.PASSIVE,
+        "fixedpose": FSMStateName.FIXEDPOSE,
+        "loco": FSMStateName.LOCOMODE,
+        "dance": FSMStateName.SKILL_Dance,
+        "kungfu": FSMStateName.SKILL_KungFu,
+        "kick": FSMStateName.SKILL_KICK,
+        "kungfu2": FSMStateName.SKILL_KungFu2,
+        "beyond_mimic": FSMStateName.SKILL_BEYOND_MIMIC,
+        "table_tennis": FSMStateName.SKILL_TABLE_TENNIS,
+        "table_tennis_distill": FSMStateName.SKILL_TABLE_TENNIS_DISTILL,
+    }
+    return policy_map[policy_name]
+
+
 class Controller:
     def __init__(self, config: Config, args: argparse.Namespace):
         self.config = config
@@ -64,6 +80,9 @@ class Controller:
         self.state_cmd = StateAndCmd(self.num_joints)
         self.policy_output = PolicyOutput(self.num_joints)
         self.FSM_controller = FSM(self.state_cmd, self.policy_output)
+        self.FSM_controller.get_next_policy(get_policy_state(self.args.start_policy))
+        self.FSM_controller.cur_policy.enter()
+        print("current policy is ", self.FSM_controller.cur_policy.name_str)
         
         self.running = True
         self.counter_over_time = 0
@@ -177,6 +196,23 @@ class Controller:
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Deploy multi-policy control on the real robot.")
+    parser.add_argument(
+        "--start-policy",
+        default="passive",
+        choices=[
+            "passive",
+            "fixedpose",
+            "loco",
+            "dance",
+            "kungfu",
+            "kick",
+            "kungfu2",
+            "beyond_mimic",
+            "table_tennis",
+            "table_tennis_distill",
+        ],
+        help="Initial FSM policy when the real-robot controller starts.",
+    )
     parser.add_argument(
         "--ball-pos",
         type=float,

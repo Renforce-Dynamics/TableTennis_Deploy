@@ -20,9 +20,15 @@ sim = [
     "mujoco>=3.1,<4",
     "pygame>=2.5,<3",
 ]
+real = [
+    "unitree-sdk2py",
+]
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+unitree-sdk2py = { path = "../unitree_sdk2_python", editable = true }
 
 [[tool.uv.index]]
 url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/"

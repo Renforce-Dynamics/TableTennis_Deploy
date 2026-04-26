@@ -1,6 +1,5 @@
 import sys
 from pathlib import Path
-
 sys.path.append(str(Path(__file__).parent.parent.absolute()))
 
 from common.path_config import PROJECT_ROOT
@@ -26,6 +25,14 @@ from config import Config
 
 def clamp_targets(target_q, current_q, max_delta):
     return np.clip(target_q, current_q - max_delta, current_q + max_delta)
+
+
+def get_policy_state(policy_name: str):
+    policy_map = {
+        "table_tennis": FSMStateName.SKILL_TABLE_TENNIS,
+        "table_tennis_distill": FSMStateName.SKILL_TABLE_TENNIS_DISTILL,
+    }
+    return policy_map[policy_name]
 
 
 class TableTennisController:
@@ -55,13 +62,23 @@ class TableTennisController:
         self.state_cmd = StateAndCmd(self.num_joints)
         self.policy_output = PolicyOutput(self.num_joints)
         self.fsm_controller = FSM(self.state_cmd, self.policy_output)
-        self.fsm_controller.get_next_policy(FSMStateName.SKILL_TABLE_TENNIS)
         self.fsm_controller.cur_policy.enter()
         print("current policy is ", self.fsm_controller.cur_policy.name_str)
 
         self.start_time = time.time()
         self.running = True
         self.counter_over_time = 0
+        self.last_policy_hint_time = 0.0
+
+    def switch_to_policy(self, policy_name: FSMStateName):
+        if self.fsm_controller.cur_policy.name == policy_name:
+            return
+        self.fsm_controller.cur_policy.exit()
+        self.fsm_controller.get_next_policy(policy_name)
+        self.fsm_controller.cur_policy.enter()
+        self.fsm_controller.FSMmode = FSMMode.NORMAL
+        self.start_time = time.time()
+        print("Switched to ", self.fsm_controller.cur_policy.name_str)
 
     def low_state_handler(self, msg: LowStateHG):
         self.low_state = msg
@@ -97,7 +114,22 @@ class TableTennisController:
         self.state_cmd.base_pos = np.array([0.0, 0.0, self.args.base_height], dtype=np.float32)
         self.state_cmd.base_lin_vel = np.zeros(3, dtype=np.float32)
         self.state_cmd.ball_pos = np.array(self.args.ball_pos, dtype=np.float32)
-        self.state_cmd.vel_cmd[:] = 0.0
+        self.state_cmd.vel_cmd[:] = 0.0 # ？
+
+    def handle_remote_commands(self):
+        if self.remote_controller.is_button_pressed(KeyMap.F1):
+            self.state_cmd.skill_cmd = FSMCommand.PASSIVE
+        if self.remote_controller.is_button_pressed(KeyMap.start):
+            self.state_cmd.skill_cmd = FSMCommand.POS_RESET
+        if self.remote_controller.is_button_pressed(KeyMap.A) and self.remote_controller.is_button_pressed(KeyMap.R1):
+            self.state_cmd.skill_cmd = FSMCommand.LOCO
+        if self.remote_controller.is_button_pressed(KeyMap.B) and self.remote_controller.is_button_pressed(KeyMap.R1):
+            if self.fsm_controller.cur_policy.name == FSMStateName.LOCOMODE:
+                self.switch_to_policy(get_policy_state(self.args.policy))
+            elif time.time() - self.last_policy_hint_time > 1.0:
+                print("Enter loco first, then press B+R1 to start table tennis.")
+                self.last_policy_hint_time = time.time()
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
 
     def compute_targets(self):
         self.fsm_controller.run()
@@ -114,22 +146,22 @@ class TableTennisController:
         try:
             loop_start_time = time.time()
             self.build_state()
-
-            # Safety shortcuts on the remote.
-            if self.remote_controller.is_button_pressed(KeyMap.F1):
-                print("Switch to damping and exit requested by remote.")
-                self.running = False
-                return
+            self.handle_remote_commands()
 
             target_q = self.compute_targets()
             kps = self.policy_output.kps.copy()
             kds = self.policy_output.kds.copy()
 
             if self.args.debug:
+                policy = self.fsm_controller.cur_policy
+                raw_action = getattr(policy, "action", np.zeros(1, dtype=np.float32))
                 print(
-                    "target range [{:.3f}, {:.3f}] ball_pos {}".format(
+                    "{} target range [{:.3f}, {:.3f}] raw action [{:.3f}, {:.3f}] ball_pos {}".format(
+                        policy.name_str,
                         float(np.min(target_q)),
                         float(np.max(target_q)),
+                        float(np.min(raw_action)),
+                        float(np.max(raw_action)),
                         self.state_cmd.ball_pos.tolist(),
                     )
                 )
@@ -157,6 +189,12 @@ class TableTennisController:
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Deploy table tennis policy on the real robot.")
+    parser.add_argument(
+        "--policy",
+        default="table_tennis",
+        choices=["table_tennis", "table_tennis_distill"],
+        help="Table tennis policy to deploy. Names match deploy_mujoco_no_joystick.py --start-policy.",
+    )
     parser.add_argument(
         "--ball-pos",
         type=float,
