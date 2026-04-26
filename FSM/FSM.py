@@ -11,6 +11,7 @@ from policy.kick.Kick import Kick
 from policy.kungfu2.KungFu2 import KungFu2
 from policy.beyond_mimic.BeyondMimic import BeyondMimic
 from policy.table_tennis.TableTennis import TableTennis
+from policy.table_tennis_distill.TableTennisDistill import TableTennisDistill
 from FSM.FSMState import *
 import time
 from common.ctrlcomp import *
@@ -41,6 +42,7 @@ class FSM:
         self.kungfu2_policy = KungFu2(state_cmd, policy_output)
         self.beyond_mimic_policy = BeyondMimic(state_cmd, policy_output)
         self.table_tennis_policy = TableTennis(state_cmd, policy_output)
+        self.table_tennis_distill_policy = TableTennisDistill(state_cmd, policy_output)
         
         print("initalized all policies!!!")
         
@@ -103,6 +105,8 @@ class FSM:
             self.cur_policy = self.beyond_mimic_policy
         elif((policy_name == FSMStateName.SKILL_TABLE_TENNIS)):
             self.cur_policy = self.table_tennis_policy
+        elif((policy_name == FSMStateName.SKILL_TABLE_TENNIS_DISTILL)):
+            self.cur_policy = self.table_tennis_distill_policy
         else:
             pass
             

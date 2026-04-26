@@ -1,0 +1,2 @@
+from policy.table_tennis_distill.TableTennisDistill import TableTennisDistill
+

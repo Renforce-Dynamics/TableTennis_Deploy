@@ -249,7 +249,11 @@
                               type="cylinder"
                               size="0.075 0.005"
                               quat="0.70710678 0.70710678 0 0"
+                              contype="1"
+                              conaffinity="1"
                               friction="0.6 0.1 0.1"
+                              solref="0.005 0.17"
+                              solimp="0.97 0.99 0.001"
                             />
                           </body>
                         </body>

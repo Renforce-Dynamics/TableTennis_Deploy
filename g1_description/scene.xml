@@ -38,7 +38,7 @@
         contype="1"
         conaffinity="1"
         friction="0.1 0.001 0.0001"
-        solref="-6000 -8"
+        solref="0.005 0.134"
         solimp="0.97 0.99 0.001"
       />
     </body>
@@ -67,9 +67,27 @@
         contype="1"
         conaffinity="1"
         friction="0.1 0.001 0.0001"
-        solref="-6000 -8"
+        solref="0.005 0.137"
         solimp="0.97 0.99 0.001"
       />
     </body>
   </worldbody>
+
+  <!-- Tuned against g1-main table-tennis restitution settings with deploy dt=0.001. -->
+  <contact>
+    <pair
+      geom1="ball_geom"
+      geom2="table_top"
+      friction="0.1 0.1 0.001 0.0001 0.0001"
+      solref="0.005 0.134"
+      solimp="0.97 0.99 0.001"
+    />
+    <pair
+      geom1="ball_geom"
+      geom2="right_racket_collision"
+      friction="0.6 0.6 0.1 0.1 0.1"
+      solref="0.005 0.22"
+      solimp="0.97 0.99 0.001"
+    />
+  </contact>
 </mujoco>

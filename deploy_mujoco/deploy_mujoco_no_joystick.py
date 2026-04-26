@@ -32,6 +32,7 @@ def get_policy_state(policy_name: str):
         "kungfu2": FSMStateName.SKILL_KungFu2,
         "beyond_mimic": FSMStateName.SKILL_BEYOND_MIMIC,
         "table_tennis": FSMStateName.SKILL_TABLE_TENNIS,
+        "table_tennis_distill": FSMStateName.SKILL_TABLE_TENNIS_DISTILL,
     }
     return policy_map[policy_name]
 
@@ -89,6 +90,8 @@ def ball_is_outside_demo_area(model, data):
 def sample_ball_reset_state(rng, default_ball_pos, default_ball_vel):
     ball_pos = default_ball_pos.copy()
     ball_vel = default_ball_vel.copy()
+    # Match g1-main reset_root_state_uniform: add y in [-0.5, 0.0] to the
+    # ball default pose instead of sampling an absolute world y.
     ball_pos[1] += rng.uniform(-0.5, 0.0)
     return ball_pos, ball_vel
 
@@ -103,7 +106,7 @@ def quat_rotate_inverse(quat_wxyz, vec_xyz):
 
 
 def apply_initial_configuration(model, data, start_policy, robot_qpos_slice, ball_pos, ball_vel):
-    if start_policy == "table_tennis":
+    if start_policy in ("table_tennis", "table_tennis_distill"):
         data.qpos[2] = 0.76
         data.qpos[robot_qpos_slice] = load_default_joint_pos()
         data.qvel[:] = 0.0
@@ -154,6 +157,7 @@ if __name__ == "__main__":
             "kungfu2",
             "beyond_mimic",
             "table_tennis",
+            "table_tennis_distill",
         ],
         help="Initial FSM policy when the simulation starts.",
     )
@@ -167,8 +171,8 @@ if __name__ == "__main__":
         "--ball-pos",
         type=float,
         nargs=3,
-        default=[3.5, -0.5, 1.0],
-        help="Initial ball position in world coordinates.",
+        default=[3.5, -0.2, 1.0],
+        help="Base ball position in world coordinates. Resets add the g1-main y range [-0.5, 0.0].",
     )
     parser.add_argument(
         "--ball-vel",
@@ -176,6 +180,11 @@ if __name__ == "__main__":
         nargs=3,
         default=[-4.0, 0.0, 0.0],
         help="Initial ball linear velocity in world coordinates.",
+    )
+    parser.add_argument(
+        "--fixed-initial-ball",
+        action="store_true",
+        help="Use --ball-pos exactly for the first full reset instead of sampling the g1-main reset range.",
     )
     args = parser.parse_args()
 
@@ -195,6 +204,13 @@ if __name__ == "__main__":
     rng = np.random.default_rng()
     default_ball_pos = np.array(args.ball_pos, dtype=np.float32)
     default_ball_vel = np.array(args.ball_vel, dtype=np.float32)
+    if args.fixed_initial_ball:
+        initial_ball_pos = default_ball_pos.copy()
+        initial_ball_vel = default_ball_vel.copy()
+    else:
+        initial_ball_pos, initial_ball_vel = sample_ball_reset_state(
+            rng, default_ball_pos, default_ball_vel
+        )
 
     reset_requested = [False]
 
@@ -220,8 +236,8 @@ if __name__ == "__main__":
         args.start_policy,
         robot_qpos_slice,
         num_joints,
-        default_ball_pos,
-        default_ball_vel,
+        initial_ball_pos,
+        initial_ball_vel,
     )
 
     running = True
@@ -230,6 +246,13 @@ if __name__ == "__main__":
             step_start = time.time()
             try:
                 if reset_requested[0]:
+                    if args.fixed_initial_ball:
+                        reset_ball_pos = default_ball_pos.copy()
+                        reset_ball_vel = default_ball_vel.copy()
+                    else:
+                        reset_ball_pos, reset_ball_vel = sample_ball_reset_state(
+                            rng, default_ball_pos, default_ball_vel
+                        )
                     with viewer.lock():
                         (
                             state_cmd,
@@ -245,8 +268,8 @@ if __name__ == "__main__":
                             args.start_policy,
                             robot_qpos_slice,
                             num_joints,
-                            default_ball_pos,
-                            default_ball_vel,
+                            reset_ball_pos,
+                            reset_ball_vel,
                         )
                     reset_requested[0] = False
 
@@ -264,7 +287,7 @@ if __name__ == "__main__":
                 mujoco.mj_step(m, d)
                 sim_counter += 1
 
-                if args.start_policy == "table_tennis" and ball_is_outside_demo_area(m, d):
+                if args.start_policy in ("table_tennis", "table_tennis_distill") and ball_is_outside_demo_area(m, d):
                     reset_ball_pos, reset_ball_vel = sample_ball_reset_state(
                         rng, default_ball_pos, default_ball_vel
                     )
@@ -299,7 +322,10 @@ if __name__ == "__main__":
                     kps = policy_output.kps.copy()
                     kds = policy_output.kds.copy()
 
-                    if args.debug_frames > 0 and FSM_controller.cur_policy.name == FSMStateName.SKILL_TABLE_TENNIS:
+                    if args.debug_frames > 0 and FSM_controller.cur_policy.name in (
+                        FSMStateName.SKILL_TABLE_TENNIS,
+                        FSMStateName.SKILL_TABLE_TENNIS_DISTILL,
+                    ):
                         policy = FSM_controller.cur_policy
                         print("\n[debug] frame", args.debug_frames)
                         for term_name in policy.term_order:

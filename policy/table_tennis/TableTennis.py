@@ -12,12 +12,18 @@ import os
 
 
 class TableTennis(FSMState):
+    policy_dir = os.path.dirname(os.path.abspath(__file__))
+    config_filename = "TableTennis.yaml"
+    fsm_state_name = FSMStateName.SKILL_TABLE_TENNIS
+    policy_name_str = "skill_table_tennis"
+    include_base_lin_vel = True
+
     def __init__(self, state_cmd: StateAndCmd, policy_output: PolicyOutput):
         super().__init__()
         self.state_cmd = state_cmd
         self.policy_output = policy_output
-        self.name = FSMStateName.SKILL_TABLE_TENNIS
-        self.name_str = "skill_table_tennis"
+        self.name = self.fsm_state_name
+        self.name_str = self.policy_name_str
         self.counter_step = 0
         self.ref_motion_phase = 0.0
         self.mj_joint_names = [
@@ -89,11 +95,11 @@ class TableTennis(FSMState):
             [self.train_joint_names.index(name) for name in self.mj_joint_names], dtype=np.int32
         )
 
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(current_dir, "config", "TableTennis.yaml")
+        current_dir = self.policy_dir
+        config_path = os.path.join(current_dir, "config", self.config_filename)
         with open(config_path, "r") as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
-            self.onnx_path = os.path.join(current_dir, "model", config["onnx_path"])
+            self.onnx_path = self._resolve_onnx_path(current_dir, config["onnx_path"])
             self.onnx_data_path = self.onnx_path + ".data"
             # The local YAML is kept in Mujoco actuator order. Reorder once into
             # the training order expected by the policy.
@@ -115,28 +121,7 @@ class TableTennis(FSMState):
 
             self.obs = np.zeros(self.num_obs, dtype=np.float32)
             self.action = np.zeros(self.num_actions, dtype=np.float32)
-            self.term_dims = {
-                "base_lin_vel": 3,
-                "base_ang_vel": 3,
-                "projected_gravity": 3,
-                "base_pos": 3,
-                "base_quat": 4,
-                "joint_pos": self.num_actions,
-                "joint_vel": self.num_actions,
-                "actions": self.num_actions,
-                "ball_pos": 3,
-            }
-            self.term_order = [
-                "base_lin_vel",
-                "base_ang_vel",
-                "projected_gravity",
-                "base_pos",
-                "base_quat",
-                "joint_pos",
-                "joint_vel",
-                "actions",
-                "ball_pos",
-            ]
+            self.term_dims, self.term_order = self._build_term_spec()
             self.term_history = {
                 name: np.zeros((self.history_length, dim), dtype=np.float32)
                 for name, dim in self.term_dims.items()
@@ -151,10 +136,46 @@ class TableTennis(FSMState):
         try:
             self._load_policy()
             self.policy_available = True
-            print("TableTennis policy initializing ...")
+            print(f"{self.name_str} policy initializing ...")
         except Exception as exc:
             self.init_error = str(exc)
-            print(f"TableTennis policy unavailable: {self.init_error}")
+            print(f"{self.name_str} policy unavailable: {self.init_error}")
+
+    def _resolve_onnx_path(self, current_dir, onnx_path):
+        if os.path.isabs(onnx_path):
+            return onnx_path
+
+        direct_path = os.path.abspath(os.path.join(current_dir, onnx_path))
+        legacy_model_path = os.path.abspath(os.path.join(current_dir, "model", onnx_path))
+        if os.path.exists(direct_path):
+            return direct_path
+        return legacy_model_path
+
+    def _build_term_spec(self):
+        term_dims = {
+            "base_ang_vel": 3,
+            "projected_gravity": 3,
+            "base_pos": 3,
+            "base_quat": 4,
+            "joint_pos": self.num_actions,
+            "joint_vel": self.num_actions,
+            "actions": self.num_actions,
+            "ball_pos": 3,
+        }
+        term_order = [
+            "base_ang_vel",
+            "projected_gravity",
+            "base_pos",
+            "base_quat",
+            "joint_pos",
+            "joint_vel",
+            "actions",
+            "ball_pos",
+        ]
+        if self.include_base_lin_vel:
+            term_dims = {"base_lin_vel": 3, **term_dims}
+            term_order = ["base_lin_vel", *term_order]
+        return term_dims, term_order
 
     def _validate_config(self):
         if self.default_angles.shape[0] != self.num_actions:
@@ -213,7 +234,6 @@ class TableTennis(FSMState):
         dqj = self.state_cmd.dq.reshape(-1)[self.mj_to_train]
         gravity_orientation = self.state_cmd.gravity_ori.reshape(-1)
         ang_vel = self.state_cmd.ang_vel.reshape(-1) * self.ang_vel_scale
-        base_lin_vel = self._get_optional_state("base_lin_vel", 3) * self.lin_vel_scale
         base_pos = self._get_optional_state("base_pos", 3)
         base_quat = self._get_optional_state("base_quat", 4)
         ball_pos = self._get_optional_state("ball_pos", 3)
@@ -221,7 +241,6 @@ class TableTennis(FSMState):
         qj_obs = (qj - self.default_angles) * self.dof_pos_scale
         dqj_obs = dqj * self.dof_vel_scale
         obs_terms = {
-            "base_lin_vel": base_lin_vel,
             "base_ang_vel": ang_vel,
             "projected_gravity": gravity_orientation,
             "base_pos": base_pos,
@@ -231,6 +250,8 @@ class TableTennis(FSMState):
             "actions": self.action,
             "ball_pos": ball_pos,
         }
+        if self.include_base_lin_vel:
+            obs_terms["base_lin_vel"] = self._get_optional_state("base_lin_vel", 3) * self.lin_vel_scale
         self.latest_obs_terms = {name: value.copy() for name, value in obs_terms.items()}
 
         obs_chunks = []
@@ -312,4 +333,4 @@ class TableTennis(FSMState):
             return FSMStateName.FIXEDPOSE
         else:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
-            return FSMStateName.SKILL_TABLE_TENNIS
+            return self.name

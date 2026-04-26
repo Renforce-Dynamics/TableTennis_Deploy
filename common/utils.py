@@ -17,6 +17,7 @@ class FSMStateName(Enum):
     SKILL_KungFu2 = 9
     SKILL_BEYOND_MIMIC = 10
     SKILL_TABLE_TENNIS = 11
+    SKILL_TABLE_TENNIS_DISTILL = 12
    
 
 @unique
@@ -54,4 +55,3 @@ def scale_values(values, target_ranges):
         scaled_val = (val + 1) * (new_max - new_min) / 2 + new_min
         scaled.append(scaled_val)
     return np.array(scaled)
-
