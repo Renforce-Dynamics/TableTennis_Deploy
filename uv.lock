@@ -583,9 +583,11 @@ name = "robomimic-deploy"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "mujoco" },
     { name = "numpy" },
     { name = "onnx" },
     { name = "onnxruntime" },
+    { name = "pygame" },
     { name = "pyyaml" },
     { name = "scipy" },
     { name = "torch" },
@@ -604,9 +606,11 @@ sim = [
 
 [package.metadata]
 requires-dist = [
+    { name = "mujoco" },
     { name = "numpy", specifier = ">=1.21.6,<2" },
     { name = "onnx", specifier = ">=1.16,<2" },
     { name = "onnxruntime", specifier = ">=1.18,<1.20" },
+    { name = "pygame" },
     { name = "pyyaml", specifier = ">=6,<7" },
     { name = "scipy", specifier = ">=1.10,<2" },
     { name = "torch", specifier = "==2.3.1" },
