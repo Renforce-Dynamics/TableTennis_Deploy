@@ -1,0 +1,3 @@
+xml_path: "g1_description/g1_29dof_rev_1_0.xml"
+simulation_dt: 0.001
+control_decimation: 20

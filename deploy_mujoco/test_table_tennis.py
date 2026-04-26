@@ -84,6 +84,7 @@ def ball_is_outside_demo_area(model, data):
     return bool(
         ball_pos[0] > 3.6
         or (abs(ball_pos[1]) > 0.8 and ball_pos[0] > 2.0)
+        or (abs(ball_pos[2]) < 0.4)
     )
 
 
@@ -146,7 +147,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run Mujoco deployment without requiring a joystick.")
     parser.add_argument(
         "--start-policy",
-        default="table_tennis",
+        default="table_tennis_distill",
         choices=[
             "passive",
             "fixedpose",
@@ -189,7 +190,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    mujoco_yaml_path = os.path.join(current_dir, "config", "mujoco.yaml")
+    mujoco_yaml_path = os.path.join(current_dir, "config", "g1_tennis.yaml")
     with open(mujoco_yaml_path, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
         xml_path = os.path.join(PROJECT_ROOT, config["xml_path"])
@@ -312,7 +313,7 @@ if __name__ == "__main__":
                     state_cmd.dq = dqj.copy()
                     state_cmd.base_pos = base_pos.copy()
                     state_cmd.base_lin_vel = base_lin_vel.copy()
-                    state_cmd.ball_pos = get_ball_pos(m, d)
+                    state_cmd.ball_pos = np.array([3.5, -0.2, 1.0]) # get_ball_pos(m, d)
                     state_cmd.gravity_ori = gravity_orientation.copy()
                     state_cmd.base_quat = quat.copy()
                     state_cmd.ang_vel = omega.copy()

@@ -23,7 +23,7 @@ def pd_control(target_q, q, kp, target_dq, dq, kd):
 
 if __name__ == "__main__":
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    mujoco_yaml_path = os.path.join(current_dir, "config", "mujoco.yaml")
+    mujoco_yaml_path = os.path.join(current_dir, "config", "g1_blind.yaml")
     with open(mujoco_yaml_path, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
         xml_path = os.path.join(PROJECT_ROOT, config["xml_path"])
