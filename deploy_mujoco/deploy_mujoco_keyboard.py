@@ -32,6 +32,9 @@ def get_policy_state(policy_name: str):
         "kungfu2": FSMStateName.SKILL_KungFu2,
         "beyond_mimic": FSMStateName.SKILL_BEYOND_MIMIC,
         "table_tennis": FSMStateName.SKILL_TABLE_TENNIS,
+        "track_motion_isaaclab": FSMStateName.SKILL_TRACK_MOTION_ISAACLAB,
+        "track_motion_mjlab": FSMStateName.SKILL_TRACK_MOTION_MJLAB,
+        "track_motion_movable_base": FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE,
     }
     return policy_map[policy_name]
 
@@ -55,18 +58,48 @@ def get_robot_state_slices(model):
 
 
 def initialize_ball_state(model, data):
+    # Support both a dynamic ball (freejoint) and a static visual marker body.
     ball_joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "ball_freejoint")
-    if ball_joint_id == -1:
+    if ball_joint_id != -1:
+        qpos_adr = model.jnt_qposadr[ball_joint_id]
+        qvel_adr = model.jnt_dofadr[ball_joint_id]
+        data.qpos[qpos_adr:qpos_adr + 7] = np.array([8, -0.2, 1.0, 1.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        data.qvel[qvel_adr:qvel_adr + 6] = np.array([-4.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
         return
 
-    qpos_adr = model.jnt_qposadr[ball_joint_id]
-    qvel_adr = model.jnt_dofadr[ball_joint_id]
-    data.qpos[qpos_adr:qpos_adr + 7] = np.array([8, -0.2, 1.0, 1.0, 0.0, 0.0, 0.0], dtype=np.float64)
-    data.qvel[qvel_adr:qvel_adr + 6] = np.array([-4.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+    ball_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "ball")
+    if ball_body_id != -1:
+        model.body_pos[ball_body_id] = np.array([0.5, -0.5, 1.0], dtype=np.float64)
+        mujoco.mj_forward(model, data)
 
 
 def get_ball_pos(data):
-    return np.array(data.body("ball").xpos, dtype=np.float32)
+    try:
+        return np.array(data.body("ball").xpos, dtype=np.float32)
+    except Exception:
+        return np.array([0.0, 0.0, 0.0], dtype=np.float32)
+
+
+def set_ball_marker_position(model, data, ball_body_id, pos_xyz):
+    if ball_body_id == -1:
+        return
+    model.body_pos[ball_body_id] = np.asarray(pos_xyz, dtype=np.float64).reshape(3)
+    mujoco.mj_forward(model, data)
+
+
+def get_track_target_for_visualization(state_cmd, current_policy):
+    # Priority: external command injection from state_cmd, fallback to policy internal random command.
+    if hasattr(state_cmd, "rel_racket_target_pos_w"):
+        val = np.asarray(getattr(state_cmd, "rel_racket_target_pos_w"), dtype=np.float32).reshape(-1)
+        if val.shape[0] == 3:
+            return val.copy()
+
+    if hasattr(current_policy, "current_rel_racket_target_pos_w"):
+        val = np.asarray(current_policy.current_rel_racket_target_pos_w, dtype=np.float32).reshape(-1)
+        if val.shape[0] == 3:
+            return val.copy()
+
+    return None
 
 
 def quat_rotate_inverse(quat_wxyz, vec_xyz):
@@ -76,6 +109,46 @@ def quat_rotate_inverse(quat_wxyz, vec_xyz):
     uv = np.cross(qvec, vec)
     uuv = np.cross(qvec, uv)
     return vec - 2.0 * (qw * uv + uuv)
+
+
+def clamp(value, low, high):
+    return max(low, min(high, value))
+
+
+def velocity_to_axis(value, value_range):
+    low, high = value_range
+    if high <= low:
+        return 0.0
+    return (2.0 * (value - low) / (high - low)) - 1.0
+
+
+GLFW_KEY_LEFT = 263
+GLFW_KEY_RIGHT = 262
+GLFW_KEY_DOWN = 264
+GLFW_KEY_UP = 265
+
+
+def print_keyboard_help():
+    print("\n=== Keyboard Controls (Mujoco Window) ===")
+    print("R: Reset simulation")
+    print("P: Passive mode")
+    print("F: Fixed pose")
+    print("L: Locomotion mode")
+    print("D: Dance")
+    print("K: Kung Fu")
+    print("C: Kick")
+    print("2: Kung Fu 2")
+    print("B: Beyond Mimic")
+    print("T: Table Tennis")
+    print("M: Track Motion Isaaclab")
+    print("N: Track Motion Static (manual base target x/y)")
+    print("V: Track Motion Movable Base (random base target)")
+    print("Arrow keys:")
+    print("  In loco -> adjust vx/vy")
+    print("  In track_motion_static (N) -> adjust base target x/y")
+    print("0: reset manual control (vx/vy and static base target x/y)")
+    print("H: Show this help")
+    print("=========================================\n")
 
 
 def apply_initial_configuration(model, data, start_policy, robot_qpos_slice):
@@ -99,6 +172,10 @@ def reset_simulation(model, data, start_policy, robot_qpos_slice, num_joints):
     state_cmd = StateAndCmd(num_joints)
     policy_output = PolicyOutput(num_joints)
     fsm_controller = FSM(state_cmd, policy_output)
+
+    # Populate state_cmd from the actual simulation state before entering the first policy.
+    state_cmd.q = d.qpos[robot_qpos_slice].copy()
+    state_cmd.dq = d.qvel[robot_qvel_slice].copy()
 
     policy_output_action = np.zeros(num_joints, dtype=np.float32)
     kps = np.zeros(num_joints, dtype=np.float32)
@@ -132,7 +209,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run Mujoco deployment with keyboard state switching.")
     parser.add_argument(
         "--start-policy",
-        default="passive",
+        default="loco",
         choices=[
             "passive",
             "fixedpose",
@@ -143,6 +220,9 @@ if __name__ == "__main__":
             "kungfu2",
             "beyond_mimic",
             "table_tennis",
+            "track_motion_isaaclab",
+            "track_motion_mjlab",
+            "track_motion_movable_base",
         ],
         help="Initial FSM policy when the simulation starts.",
     )
@@ -162,14 +242,36 @@ if __name__ == "__main__":
         simulation_dt = config["simulation_dt"]
         control_decimation = config["control_decimation"]
 
+    # Load locomotion command range (m/s) for manual keyboard adjustment.
+    loco_cfg_path = os.path.join(PROJECT_ROOT, "policy", "loco_mode", "config", "LocoMode.yaml")
+    with open(loco_cfg_path, "r") as f:
+        loco_cfg = yaml.load(f, Loader=yaml.FullLoader)
+    loco_range_x = (
+        float(loco_cfg["cmd_range"]["lin_vel_x"][0]),
+        float(loco_cfg["cmd_range"]["lin_vel_x"][1]),
+    )
+    loco_range_y = (
+        float(loco_cfg["cmd_range"]["lin_vel_y"][0]),
+        float(loco_cfg["cmd_range"]["lin_vel_y"][1]),
+    )
+    movable_base_x_range = (-0.5, 0.5)
+    movable_base_y_range = (-0.5, 0.5)
+    loco_step_x = 0.05
+    loco_step_y = 0.05
+    base_step_x = 0.02
+    base_step_y = 0.02
+
     m = mujoco.MjModel.from_xml_path(xml_path)
     d = mujoco.MjData(m)
     m.opt.timestep = simulation_dt
+    ball_body_id = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "ball")
     num_joints = m.nu
     robot_qpos_slice, robot_qvel_slice = get_robot_state_slices(m)
 
     reset_requested = [False]
     policy_switch_requested = [None]
+    loco_cmd_vxy = [0.0, 0.0]
+    static_base_target_xy = [0.0, 0.0]
 
     # Keyboard mapping for policy switching
     KEY_MAP = {
@@ -182,33 +284,97 @@ if __name__ == "__main__":
         '2': ('kungfu2', FSMStateName.SKILL_KungFu2),
         'b': ('beyond_mimic', FSMStateName.SKILL_BEYOND_MIMIC),
         't': ('table_tennis', FSMStateName.SKILL_TABLE_TENNIS),
+        'm': ('track_motion_isaaclab', FSMStateName.SKILL_TRACK_MOTION_ISAACLAB),
+        'n': ('track_motion_mjlab', FSMStateName.SKILL_TRACK_MOTION_MJLAB),
+        'v': ('track_motion_movable_base', FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE),
+    }
+    ARROW_KEY_NAMES = {
+        GLFW_KEY_UP: "UP",
+        GLFW_KEY_DOWN: "DOWN",
+        GLFW_KEY_LEFT: "LEFT",
+        GLFW_KEY_RIGHT: "RIGHT",
     }
 
-    def key_callback(keycode):
-        try:
-            key = chr(keycode).lower()
-        except ValueError:
+    def print_manual_status():
+        print(
+            "[manual status] "
+            f"loco_vx={loco_cmd_vxy[0]:.3f} m/s "
+            f"loco_vy={loco_cmd_vxy[1]:.3f} m/s "
+            f"static_base_target=({static_base_target_xy[0]:.3f}, {static_base_target_xy[1]:.3f})"
+        )
+
+    def on_arrow_key(keycode):
+        cur_policy = FSM_controller.cur_policy.name
+        arrow = ARROW_KEY_NAMES[keycode]
+
+        if cur_policy == FSMStateName.LOCOMODE:
+            if keycode == GLFW_KEY_UP:
+                loco_cmd_vxy[0] += loco_step_x
+            elif keycode == GLFW_KEY_DOWN:
+                loco_cmd_vxy[0] -= loco_step_x
+            elif keycode == GLFW_KEY_LEFT:
+                loco_cmd_vxy[1] += loco_step_y
+            elif keycode == GLFW_KEY_RIGHT:
+                loco_cmd_vxy[1] -= loco_step_y
+            loco_cmd_vxy[0] = clamp(loco_cmd_vxy[0], loco_range_x[0], loco_range_x[1])
+            loco_cmd_vxy[1] = clamp(loco_cmd_vxy[1], loco_range_y[0], loco_range_y[1])
+            print(
+                f"[key] {arrow} -> loco vxy=({loco_cmd_vxy[0]:.3f}, {loco_cmd_vxy[1]:.3f}) m/s"
+            )
             return
 
+        if cur_policy == FSMStateName.SKILL_TRACK_MOTION_MJLAB:
+            if keycode == GLFW_KEY_UP:
+                static_base_target_xy[0] += base_step_x
+            elif keycode == GLFW_KEY_DOWN:
+                static_base_target_xy[0] -= base_step_x
+            elif keycode == GLFW_KEY_LEFT:
+                static_base_target_xy[1] += base_step_y
+            elif keycode == GLFW_KEY_RIGHT:
+                static_base_target_xy[1] -= base_step_y
+            static_base_target_xy[0] = clamp(
+                static_base_target_xy[0], movable_base_x_range[0], movable_base_x_range[1]
+            )
+            static_base_target_xy[1] = clamp(
+                static_base_target_xy[1], movable_base_y_range[0], movable_base_y_range[1]
+            )
+            print(
+                "[key] {} -> static_base_target=({:.3f}, {:.3f})".format(
+                    arrow, static_base_target_xy[0], static_base_target_xy[1]
+                )
+            )
+            return
+
+        print(f"[key] {arrow} ignored in policy: {FSM_controller.cur_policy.name_str}")
+
+    def key_callback(keycode):
+        if keycode in ARROW_KEY_NAMES:
+            on_arrow_key(keycode)
+            return
+
+        if keycode < 0 or keycode > 255:
+            print(f"[key] code={keycode} -> no binding")
+            return
+
+        key = chr(keycode).lower()
         if key == "r":
             reset_requested[0] = True
+            print("[key] R -> reset simulation")
         elif key in KEY_MAP:
             policy_name, policy_state = KEY_MAP[key]
             policy_switch_requested[0] = (policy_name, policy_state)
+            print(f"[key] {key.upper()} -> switch policy: {policy_name}")
+        elif key == "0":
+            loco_cmd_vxy[0] = 0.0
+            loco_cmd_vxy[1] = 0.0
+            static_base_target_xy[0] = 0.0
+            static_base_target_xy[1] = 0.0
+            print("[key] 0 -> reset manual control values")
+            print_manual_status()
         elif key == 'h':
-            print("\n=== Keyboard Controls ===")
-            print("R: Reset simulation")
-            print("P: Passive mode")
-            print("F: Fixed pose")
-            print("L: Locomotion mode")
-            print("D: Dance")
-            print("K: Kung Fu")
-            print("C: Kick")
-            print("2: Kung Fu 2")
-            print("B: Beyond Mimic")
-            print("T: Table Tennis")
-            print("H: Show this help")
-            print("========================\n")
+            print_keyboard_help()
+        else:
+            print(f"[key] {key} -> no binding")
 
     (
         state_cmd,
@@ -220,10 +386,8 @@ if __name__ == "__main__":
         sim_counter,
     ) = reset_simulation(m, d, args.start_policy, robot_qpos_slice, num_joints)
 
-    # Print keyboard controls at startup
-    print("\n=== Keyboard Controls ===")
-    print("Press 'H' for help at any time")
-    print("========================\n")
+    print_keyboard_help()
+    print_manual_status()
 
     running = True
     with mujoco.viewer.launch_passive(m, d, key_callback=key_callback) as viewer:
@@ -243,15 +407,25 @@ if __name__ == "__main__":
                             sim_counter,
                         ) = reset_simulation(m, d, args.start_policy, robot_qpos_slice, num_joints)
                     reset_requested[0] = False
+                    print_manual_status()
 
                 # Handle policy switch request
                 if policy_switch_requested[0] is not None:
                     policy_name, policy_state = policy_switch_requested[0]
                     with viewer.lock():
                         switch_policy(FSM_controller, policy_state)
+                    if policy_state == FSMStateName.SKILL_TRACK_MOTION_MJLAB:
+                        static_base_target_xy[0] = 0.0
+                        static_base_target_xy[1] = 0.0
+                        print("[policy] track_motion_static -> reset base target to (0.000, 0.000)")
                     policy_switch_requested[0] = None
 
-                state_cmd.vel_cmd[:] = 0.0
+                # Convert physical velocity command to loco joystick domain [-1, 1].
+                vx = clamp(loco_cmd_vxy[0], loco_range_x[0], loco_range_x[1])
+                vy = clamp(loco_cmd_vxy[1], loco_range_y[0], loco_range_y[1])
+                state_cmd.vel_cmd[0] = velocity_to_axis(vx, loco_range_x)
+                state_cmd.vel_cmd[1] = velocity_to_axis(vy, loco_range_y)
+                state_cmd.vel_cmd[2] = 0.0
 
                 tau = pd_control(
                     policy_output_action,
@@ -283,10 +457,30 @@ if __name__ == "__main__":
                     state_cmd.base_quat = quat.copy()
                     state_cmd.ang_vel = omega.copy()
 
+                    if FSM_controller.cur_policy.name == FSMStateName.SKILL_TRACK_MOTION_MJLAB:
+                        state_cmd.base_pos_target = np.array(static_base_target_xy, dtype=np.float32)
+                    else:
+                        # For movable-base policy, keep target None so policy uses internal random command.
+                        state_cmd.base_pos_target = None
+
                     FSM_controller.run()
                     policy_output_action = policy_output.actions.copy()
                     kps = policy_output.kps.copy()
                     kds = policy_output.kds.copy()
+
+                    # Keep the visual ball aligned with the intended hitting target in track-motion states.
+                    if FSM_controller.cur_policy.name in (
+                        FSMStateName.SKILL_TRACK_MOTION_MJLAB,
+                        FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE,
+                    ):
+                        rel_target = get_track_target_for_visualization(state_cmd, FSM_controller.cur_policy)
+                        if rel_target is not None:
+                            ball_display_pos = base_pos.copy() + rel_target
+                            ball_display_pos[2] = max(0.02, float(ball_display_pos[2]))
+                            set_ball_marker_position(m, d, ball_body_id, ball_display_pos)
+                            state_cmd.ball_pos = ball_display_pos.astype(np.float32)
+                    else:
+                        state_cmd.ball_pos = get_ball_pos(d)
 
                     if args.debug_frames > 0 and FSM_controller.cur_policy.name == FSMStateName.SKILL_TABLE_TENNIS:
                         policy = FSM_controller.cur_policy

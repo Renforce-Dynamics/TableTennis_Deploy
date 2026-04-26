@@ -32,6 +32,9 @@ def get_policy_state(policy_name: str):
         "kungfu2": FSMStateName.SKILL_KungFu2,
         "beyond_mimic": FSMStateName.SKILL_BEYOND_MIMIC,
         "table_tennis": FSMStateName.SKILL_TABLE_TENNIS,
+        "track_motion_isaaclab": FSMStateName.SKILL_TRACK_MOTION_ISAACLAB,
+        "track_motion_mjlab": FSMStateName.SKILL_TRACK_MOTION_MJLAB,
+        "track_motion_movable_base": FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE,
     }
     return policy_map[policy_name]
 
@@ -130,6 +133,9 @@ if __name__ == "__main__":
             "kungfu2",
             "beyond_mimic",
             "table_tennis",
+            "track_motion_isaaclab",
+            "track_motion_mjlab",
+            "track_motion_movable_base",
         ],
         help="Initial FSM policy when the simulation starts.",
     )
