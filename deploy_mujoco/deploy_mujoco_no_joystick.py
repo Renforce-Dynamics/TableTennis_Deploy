@@ -54,19 +54,43 @@ def get_robot_state_slices(model):
     return slice(qpos_start, qpos_start + model.nu), slice(qvel_start, qvel_start + model.nu)
 
 
-def initialize_ball_state(model, data):
+def initialize_ball_state(model, data, ball_pos, ball_vel):
     ball_joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "ball_freejoint")
     if ball_joint_id == -1:
         return
 
     qpos_adr = model.jnt_qposadr[ball_joint_id]
     qvel_adr = model.jnt_dofadr[ball_joint_id]
-    data.qpos[qpos_adr:qpos_adr + 7] = np.array([3.5, -0.2, 1.0, 1.0, 0.0, 0.0, 0.0], dtype=np.float64)
-    data.qvel[qvel_adr:qvel_adr + 6] = np.array([-4.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+    data.qpos[qpos_adr:qpos_adr + 7] = np.array(
+        [ball_pos[0], ball_pos[1], ball_pos[2], 1.0, 0.0, 0.0, 0.0], dtype=np.float64
+    )
+    data.qvel[qvel_adr:qvel_adr + 6] = np.array(
+        [ball_vel[0], ball_vel[1], ball_vel[2], 0.0, 0.0, 0.0], dtype=np.float64
+    )
 
 
-def get_ball_pos(data):
-    return np.array(data.body("ball").xpos, dtype=np.float32)
+def get_ball_pos(model, data):
+    ball_joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "ball_freejoint")
+    if ball_joint_id == -1:
+        return np.array(data.body("ball").xpos, dtype=np.float32)
+
+    qpos_adr = model.jnt_qposadr[ball_joint_id]
+    return np.array(data.qpos[qpos_adr:qpos_adr + 3], dtype=np.float32)
+
+
+def ball_is_outside_demo_area(model, data):
+    ball_pos = get_ball_pos(model, data)
+    return bool(
+        ball_pos[0] > 3.6
+        or (abs(ball_pos[1]) > 0.8 and ball_pos[0] > 2.0)
+    )
+
+
+def sample_ball_reset_state(rng, default_ball_pos, default_ball_vel):
+    ball_pos = default_ball_pos.copy()
+    ball_vel = default_ball_vel.copy()
+    ball_pos[1] += rng.uniform(-0.5, 0.0)
+    return ball_pos, ball_vel
 
 
 def quat_rotate_inverse(quat_wxyz, vec_xyz):
@@ -78,18 +102,18 @@ def quat_rotate_inverse(quat_wxyz, vec_xyz):
     return vec - 2.0 * (qw * uv + uuv)
 
 
-def apply_initial_configuration(model, data, start_policy, robot_qpos_slice):
+def apply_initial_configuration(model, data, start_policy, robot_qpos_slice, ball_pos, ball_vel):
     if start_policy == "table_tennis":
         data.qpos[2] = 0.76
         data.qpos[robot_qpos_slice] = load_default_joint_pos()
         data.qvel[:] = 0.0
-        initialize_ball_state(model, data)
+        initialize_ball_state(model, data, ball_pos, ball_vel)
     mujoco.mj_forward(model, data)
 
 
-def reset_simulation(model, data, start_policy, robot_qpos_slice, num_joints):
+def reset_simulation(model, data, start_policy, robot_qpos_slice, num_joints, ball_pos, ball_vel):
     mujoco.mj_resetData(model, data)
-    apply_initial_configuration(model, data, start_policy, robot_qpos_slice)
+    apply_initial_configuration(model, data, start_policy, robot_qpos_slice, ball_pos, ball_vel)
     data.ctrl[:] = 0.0
     data.qfrc_applied[:] = 0.0
     data.xfrc_applied[:] = 0.0
@@ -139,6 +163,20 @@ if __name__ == "__main__":
         default=0,
         help="Print key observation/action statistics for the first N control frames.",
     )
+    parser.add_argument(
+        "--ball-pos",
+        type=float,
+        nargs=3,
+        default=[3.5, -0.5, 1.0],
+        help="Initial ball position in world coordinates.",
+    )
+    parser.add_argument(
+        "--ball-vel",
+        type=float,
+        nargs=3,
+        default=[-4.0, 0.0, 0.0],
+        help="Initial ball linear velocity in world coordinates.",
+    )
     args = parser.parse_args()
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -154,6 +192,9 @@ if __name__ == "__main__":
     m.opt.timestep = simulation_dt
     num_joints = m.nu
     robot_qpos_slice, robot_qvel_slice = get_robot_state_slices(m)
+    rng = np.random.default_rng()
+    default_ball_pos = np.array(args.ball_pos, dtype=np.float32)
+    default_ball_vel = np.array(args.ball_vel, dtype=np.float32)
 
     reset_requested = [False]
 
@@ -173,7 +214,15 @@ if __name__ == "__main__":
         kps,
         kds,
         sim_counter,
-    ) = reset_simulation(m, d, args.start_policy, robot_qpos_slice, num_joints)
+    ) = reset_simulation(
+        m,
+        d,
+        args.start_policy,
+        robot_qpos_slice,
+        num_joints,
+        default_ball_pos,
+        default_ball_vel,
+    )
 
     running = True
     with mujoco.viewer.launch_passive(m, d, key_callback=key_callback) as viewer:
@@ -190,7 +239,15 @@ if __name__ == "__main__":
                             kps,
                             kds,
                             sim_counter,
-                        ) = reset_simulation(m, d, args.start_policy, robot_qpos_slice, num_joints)
+                        ) = reset_simulation(
+                            m,
+                            d,
+                            args.start_policy,
+                            robot_qpos_slice,
+                            num_joints,
+                            default_ball_pos,
+                            default_ball_vel,
+                        )
                     reset_requested[0] = False
 
                 state_cmd.vel_cmd[:] = 0.0
@@ -207,6 +264,18 @@ if __name__ == "__main__":
                 mujoco.mj_step(m, d)
                 sim_counter += 1
 
+                if args.start_policy == "table_tennis" and ball_is_outside_demo_area(m, d):
+                    reset_ball_pos, reset_ball_vel = sample_ball_reset_state(
+                        rng, default_ball_pos, default_ball_vel
+                    )
+                    initialize_ball_state(
+                        m,
+                        d,
+                        reset_ball_pos,
+                        reset_ball_vel,
+                    )
+                    mujoco.mj_forward(m, d)
+
                 if sim_counter % control_decimation == 0:
                     qj = d.qpos[robot_qpos_slice]
                     dqj = d.qvel[robot_qvel_slice]
@@ -220,7 +289,7 @@ if __name__ == "__main__":
                     state_cmd.dq = dqj.copy()
                     state_cmd.base_pos = base_pos.copy()
                     state_cmd.base_lin_vel = base_lin_vel.copy()
-                    state_cmd.ball_pos = get_ball_pos(d)
+                    state_cmd.ball_pos = get_ball_pos(m, d)
                     state_cmd.gravity_ori = gravity_orientation.copy()
                     state_cmd.base_quat = quat.copy()
                     state_cmd.ang_vel = omega.copy()
