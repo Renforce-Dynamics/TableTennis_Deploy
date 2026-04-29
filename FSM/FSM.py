@@ -12,6 +12,8 @@ from policy.kungfu2.KungFu2 import KungFu2
 from policy.beyond_mimic.BeyondMimic import BeyondMimic
 from policy.table_tennis.TableTennis import TableTennis
 from policy.table_tennis_distill.TableTennisDistill import TableTennisDistill
+from policy.track_motion_mjlab.TrackMotionMjlab import TrackMotionMjlab
+from policy.track_motion_movable_base.TrackMotionMovableBase import TrackMotionMovableBase
 from FSM.FSMState import *
 import time
 from common.ctrlcomp import *
@@ -43,6 +45,8 @@ class FSM:
         self.beyond_mimic_policy = BeyondMimic(state_cmd, policy_output)
         self.table_tennis_policy = TableTennis(state_cmd, policy_output)
         self.table_tennis_distill_policy = TableTennisDistill(state_cmd, policy_output)
+        self.track_motion_mjlab_policy = TrackMotionMjlab(state_cmd, policy_output)
+        self.track_motion_movable_base_policy = TrackMotionMovableBase(state_cmd, policy_output)
         
         print("initalized all policies!!!")
         
@@ -107,6 +111,10 @@ class FSM:
             self.cur_policy = self.table_tennis_policy
         elif((policy_name == FSMStateName.SKILL_TABLE_TENNIS_DISTILL)):
             self.cur_policy = self.table_tennis_distill_policy
+        elif((policy_name == FSMStateName.SKILL_TRACK_MOTION_MJLAB)):
+            self.cur_policy = self.track_motion_mjlab_policy
+        elif((policy_name == FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE)):
+            self.cur_policy = self.track_motion_movable_base_policy
         else:
             pass
             
