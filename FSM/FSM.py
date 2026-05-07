@@ -10,12 +10,10 @@ from policy.skill_cast.SkillCast import SkillCast
 from policy.kick.Kick import Kick
 from policy.kungfu2.KungFu2 import KungFu2
 from policy.beyond_mimic.BeyondMimic import BeyondMimic
-from policy.table_tennis.TableTennis import TableTennis
-from policy.table_tennis_distill.TableTennisDistill import TableTennisDistill
-from policy.table_tennis_rev_racket.TableTennisRevRacket import TableTennisRevRacket
 from FSM.FSMState import *
 import time
 from common.ctrlcomp import *
+from common.policy_registry import EXTRA_POLICY_SPECS, load_extra_policy_class
 from enum import Enum, unique
 
 @unique
@@ -42,9 +40,26 @@ class FSM:
         self.kick_policy = Kick(state_cmd, policy_output)
         self.kungfu2_policy = KungFu2(state_cmd, policy_output)
         self.beyond_mimic_policy = BeyondMimic(state_cmd, policy_output)
-        self.table_tennis_policy = TableTennis(state_cmd, policy_output)
-        self.table_tennis_distill_policy = TableTennisDistill(state_cmd, policy_output)
-        self.table_tennis_rev_racket_policy = TableTennisRevRacket(state_cmd, policy_output)
+        self.policy_map = {
+            FSMStateName.PASSIVE: self.passive_mode,
+            FSMStateName.FIXEDPOSE: self.fixed_pose_1,
+            FSMStateName.LOCOMODE: self.loco_policy,
+            FSMStateName.SKILL_KungFu: self.kungfu_policy,
+            FSMStateName.SKILL_Dance: self.dance_policy,
+            FSMStateName.SKILL_COOLDOWN: self.skill_cooldown_policy,
+            FSMStateName.SKILL_CAST: self.skill_cast_policy,
+            FSMStateName.SKILL_KICK: self.kick_policy,
+            FSMStateName.SKILL_KungFu2: self.kungfu2_policy,
+            FSMStateName.SKILL_BEYOND_MIMIC: self.beyond_mimic_policy,
+        }
+        for spec in EXTRA_POLICY_SPECS:
+            try:
+                policy_cls = load_extra_policy_class(spec)
+                policy = policy_cls(state_cmd, policy_output)
+            except Exception as exc:
+                print(f"extra policy {spec.key} unavailable: {exc}")
+                continue
+            self.policy_map[spec.key] = policy
         
         print("initalized all policies!!!")
         
@@ -84,35 +99,10 @@ class FSM:
             print("inference time beyond control horzion!!!")
             
             
-    def get_next_policy(self, policy_name:FSMStateName):
-        if(policy_name == FSMStateName.PASSIVE):
-            self.cur_policy = self.passive_mode
-        elif((policy_name == FSMStateName.FIXEDPOSE)):
-            self.cur_policy = self.fixed_pose_1
-        elif((policy_name == FSMStateName.LOCOMODE)):
-            self.cur_policy = self.loco_policy
-        elif((policy_name == FSMStateName.SKILL_KungFu)):
-            self.cur_policy = self.kungfu_policy
-        elif((policy_name == FSMStateName.SKILL_Dance)):
-            self.cur_policy = self.dance_policy
-        elif((policy_name == FSMStateName.SKILL_COOLDOWN)):
-            self.cur_policy = self.skill_cooldown_policy
-        elif((policy_name == FSMStateName.SKILL_CAST)):
-            self.cur_policy = self.skill_cast_policy
-        elif((policy_name == FSMStateName.SKILL_KICK)):
-            self.cur_policy = self.kick_policy
-        elif((policy_name == FSMStateName.SKILL_KungFu2)):
-            self.cur_policy = self.kungfu2_policy
-        elif((policy_name == FSMStateName.SKILL_BEYOND_MIMIC)):
-            self.cur_policy = self.beyond_mimic_policy
-        elif((policy_name == FSMStateName.SKILL_TABLE_TENNIS)):
-            self.cur_policy = self.table_tennis_policy
-        elif((policy_name == FSMStateName.SKILL_TABLE_TENNIS_DISTILL)):
-            self.cur_policy = self.table_tennis_distill_policy
-        elif((policy_name == FSMStateName.SKILL_TABLE_TENNIS_REV_RACKET)):
-            self.cur_policy = self.table_tennis_rev_racket_policy
-        else:
-            pass
+    def get_next_policy(self, policy_name):
+        next_policy = self.policy_map.get(policy_name)
+        if next_policy is not None:
+            self.cur_policy = next_policy
             
         
         

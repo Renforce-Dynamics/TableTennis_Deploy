@@ -18,6 +18,7 @@ from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowState_ as LowStateHG
 from unitree_sdk2py.utils.crc import CRC
 
 from common.command_helper import create_damping_cmd, init_cmd_hg, MotorMode
+from common.policy_registry import get_policy_choices, get_policy_state
 from common.rotation_helper import get_gravity_orientation_real
 from common.remote_controller import RemoteController, KeyMap
 from config import Config
@@ -25,15 +26,6 @@ from config import Config
 
 def clamp_targets(target_q, current_q, max_delta):
     return np.clip(target_q, current_q - max_delta, current_q + max_delta)
-
-
-def get_policy_state(policy_name: str):
-    policy_map = {
-        "table_tennis": FSMStateName.SKILL_TABLE_TENNIS,
-        "table_tennis_distill": FSMStateName.SKILL_TABLE_TENNIS_DISTILL,
-        "table_tennis_rev_racket": FSMStateName.SKILL_TABLE_TENNIS_REV_RACKET,
-    }
-    return policy_map[policy_name]
 
 
 class TableTennisController:
@@ -71,7 +63,7 @@ class TableTennisController:
         self.counter_over_time = 0
         self.last_policy_hint_time = 0.0
 
-    def switch_to_policy(self, policy_name: FSMStateName):
+    def switch_to_policy(self, policy_name):
         if self.fsm_controller.cur_policy.name == policy_name:
             return
         self.fsm_controller.cur_policy.exit()
@@ -115,7 +107,7 @@ class TableTennisController:
         self.state_cmd.base_pos = np.array([0.0, 0.0, self.args.base_height], dtype=np.float32)
         self.state_cmd.base_lin_vel = np.zeros(3, dtype=np.float32)
         self.state_cmd.ball_pos = np.array(self.args.ball_pos, dtype=np.float32)
-        self.state_cmd.vel_cmd[:] = 0.0 # ？
+        self.state_cmd.vel_cmd[:] = 0.0
 
     def handle_remote_commands(self):
         if self.remote_controller.is_button_pressed(KeyMap.F1):
@@ -193,7 +185,7 @@ def parse_args():
     parser.add_argument(
         "--policy",
         default="table_tennis",
-        choices=["table_tennis", "table_tennis_distill", "table_tennis_rev_racket"],
+        choices=get_policy_choices(include_base=False),
         help="Table tennis policy to deploy. Names match deploy_mujoco_no_joystick.py --start-policy.",
     )
     parser.add_argument(

@@ -4,7 +4,19 @@
 
 conda activate robomimic
 
-python deploy_mujoco/deploy_mujoco_no_joystick.py --start-policy table_tennis 
+python deploy_mujoco/deploy_mujoco_no_joystick.py --table-policy table_tennis
+
+键盘流程：
+
+```text
+启动后：PASSIVE
+l：进入 LOCO
+t：从 LOCO 切到乒乓任务
+p：切回 PASSIVE
+f：进入 fixed_pose
+r：重置仿真
+1/2/3：选择 table_tennis / table_tennis_distill / table_tennis_rev_racket
+```
 
 如需查看输出 --debug-frames (num)
 

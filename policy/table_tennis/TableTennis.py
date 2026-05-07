@@ -14,7 +14,7 @@ import os
 class TableTennis(FSMState):
     policy_dir = os.path.dirname(os.path.abspath(__file__))
     config_filename = "TableTennis.yaml"
-    fsm_state_name = FSMStateName.SKILL_TABLE_TENNIS
+    fsm_state_name = "table_tennis"
     policy_name_str = "skill_table_tennis"
     include_base_lin_vel = True
     prime_history_on_first_obs = True

@@ -3,12 +3,23 @@
 **MuJoCo 里跑 distill**
 ```bash
 cd /home/infinite/RoboMimic_Deploy
-.venv/bin/python deploy_mujoco/deploy_mujoco_no_joystick.py --start-policy table_tennis_distill
+.venv/bin/python deploy_mujoco/deploy_mujoco_no_joystick.py --table-policy table_tennis_distill
 ```
 
 带 debug 看 obs/action：
 ```bash
-.venv/bin/python deploy_mujoco/deploy_mujoco_no_joystick.py --start-policy table_tennis_distill --debug-frames 20
+.venv/bin/python deploy_mujoco/deploy_mujoco_no_joystick.py --table-policy table_tennis_distill --debug-frames 20
+```
+
+键盘流程：
+```text
+启动后：PASSIVE
+l：进入 LOCO
+t：从 LOCO 切到乒乓任务
+p：切回 PASSIVE
+f：进入 fixed_pose
+r：重置仿真
+1/2/3：选择 table_tennis / table_tennis_distill / table_tennis_rev_racket
 ```
 
 **真机上跑 distill，推荐用专用脚本**
@@ -41,10 +52,4 @@ cd /home/infinite/RoboMimic_Deploy
 `--ramp-time` 是启动时从当前关节姿态渐进到策略目标的时间。  
 `--max-delta` 是每个控制周期目标关节最多离当前关节多远。越小越稳，越大越接近 MuJoCo，但风险也更高。
 
-如果用通用 FSM 真机脚本：
-
-```bash
-.venv/bin/python deploy_real/deploy_real.py --start-policy table_tennis_distill
-```
-
-但我建议先用 `deploy_real_table_tennis.py`，它有 `--dry-run`、`--debug`、`--ramp-time`、`--max-delta`，更适合真机试。
+真机乒乓建议用 `deploy_real_table_tennis.py`，它有 `--dry-run`、`--debug`、`--ramp-time`、`--max-delta`，更适合真机试。

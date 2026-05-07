@@ -17,6 +17,7 @@ import numpy as np
 import yaml
 from common.ctrlcomp import *
 from FSM.FSM import *
+from common.policy_registry import EXTRA_POLICY_SPECS, get_policy_choices, get_policy_state
 from common.utils import get_gravity_orientation
 
 
@@ -25,21 +26,12 @@ def pd_control(target_q, q, kp, target_dq, dq, kd):
     return (target_q - q) * kp + (target_dq - dq) * kd
 
 
-def get_policy_state(policy_name: str):
-    policy_map = {
-        "passive": FSMStateName.PASSIVE,
-        "fixedpose": FSMStateName.FIXEDPOSE,
-        "loco": FSMStateName.LOCOMODE,
-        "dance": FSMStateName.SKILL_Dance,
-        "kungfu": FSMStateName.SKILL_KungFu,
-        "kick": FSMStateName.SKILL_KICK,
-        "kungfu2": FSMStateName.SKILL_KungFu2,
-        "beyond_mimic": FSMStateName.SKILL_BEYOND_MIMIC,
-        "table_tennis": FSMStateName.SKILL_TABLE_TENNIS,
-        "table_tennis_distill": FSMStateName.SKILL_TABLE_TENNIS_DISTILL,
-        "table_tennis_rev_racket": FSMStateName.SKILL_TABLE_TENNIS_REV_RACKET,
-    }
-    return policy_map[policy_name]
+TABLE_POLICY_NAMES = tuple(spec.key for spec in EXTRA_POLICY_SPECS)
+TABLE_POLICY_BY_KEY = {
+    "1": "table_tennis",
+    "2": "table_tennis_distill",
+    "3": "table_tennis_rev_racket",
+}
 
 
 def load_default_joint_pos():
@@ -102,6 +94,12 @@ def sample_ball_reset_state(rng, default_ball_pos, default_ball_vel):
     return ball_pos, ball_vel
 
 
+def get_reset_ball_state(args, rng, default_ball_pos, default_ball_vel):
+    if args.fixed_initial_ball:
+        return default_ball_pos.copy(), default_ball_vel.copy()
+    return sample_ball_reset_state(rng, default_ball_pos, default_ball_vel)
+
+
 def quat_rotate_inverse(quat_wxyz, vec_xyz):
     qw, qx, qy, qz = quat_wxyz
     qvec = np.array([qx, qy, qz], dtype=np.float32)
@@ -111,18 +109,36 @@ def quat_rotate_inverse(quat_wxyz, vec_xyz):
     return vec - 2.0 * (qw * uv + uuv)
 
 
-def apply_initial_configuration(model, data, start_policy, robot_qpos_slice, ball_pos, ball_vel):
-    if start_policy in ("table_tennis", "table_tennis_distill", "table_tennis_rev_racket"):
-        data.qpos[2] = 0.76
-        data.qpos[robot_qpos_slice] = load_default_joint_pos()
-        data.qvel[:] = 0.0
-        initialize_ball_state(model, data, ball_pos, ball_vel)
+def populate_state_cmd(model, data, state_cmd, robot_qpos_slice, robot_qvel_slice):
+    qj = data.qpos[robot_qpos_slice]
+    dqj = data.qvel[robot_qvel_slice]
+    base_pos = data.qpos[0:3]
+    quat = data.qpos[3:7]
+    base_lin_vel = quat_rotate_inverse(quat, data.qvel[0:3])
+    omega = quat_rotate_inverse(quat, data.qvel[3:6])
+    gravity_orientation = get_gravity_orientation(quat)
+
+    state_cmd.q = qj.copy()
+    state_cmd.dq = dqj.copy()
+    state_cmd.base_pos = base_pos.copy()
+    state_cmd.base_lin_vel = base_lin_vel.copy()
+    state_cmd.ball_pos = get_ball_pos(model, data)
+    state_cmd.gravity_ori = gravity_orientation.copy()
+    state_cmd.base_quat = quat.copy()
+    state_cmd.ang_vel = omega.copy()
+
+
+def apply_initial_configuration(model, data, start_policy, robot_qpos_slice, base_height, ball_pos, ball_vel):
+    data.qpos[2] = base_height
+    data.qpos[robot_qpos_slice] = load_default_joint_pos()
+    data.qvel[:] = 0.0
+    initialize_ball_state(model, data, ball_pos, ball_vel)
     mujoco.mj_forward(model, data)
 
 
-def reset_simulation(model, data, start_policy, robot_qpos_slice, num_joints, ball_pos, ball_vel):
+def reset_simulation(model, data, start_policy, robot_qpos_slice, robot_qvel_slice, num_joints, base_height, ball_pos, ball_vel):
     mujoco.mj_resetData(model, data)
-    apply_initial_configuration(model, data, start_policy, robot_qpos_slice, ball_pos, ball_vel)
+    apply_initial_configuration(model, data, start_policy, robot_qpos_slice, base_height, ball_pos, ball_vel)
     data.ctrl[:] = 0.0
     data.qfrc_applied[:] = 0.0
     data.xfrc_applied[:] = 0.0
@@ -144,29 +160,88 @@ def reset_simulation(model, data, start_policy, robot_qpos_slice, num_joints, ba
     else:
         fsm_controller.cur_policy.enter()
 
+    populate_state_cmd(model, data, state_cmd, robot_qpos_slice, robot_qvel_slice)
+    fsm_controller.run()
+    policy_output_action = policy_output.actions.copy()
+    kps = policy_output.kps.copy()
+    kds = policy_output.kds.copy()
+
     print("Simulation reset to initial state.")
     return state_cmd, policy_output, fsm_controller, policy_output_action, kps, kds, sim_counter
+
+
+def switch_policy(fsm_controller, policy_name):
+    if fsm_controller.cur_policy.name == policy_name:
+        return True
+
+    previous_policy = fsm_controller.cur_policy
+    fsm_controller.cur_policy.exit()
+    fsm_controller.get_next_policy(policy_name)
+    if fsm_controller.cur_policy is previous_policy and previous_policy.name != policy_name:
+        print("Policy is unavailable:", policy_name)
+        return False
+
+    fsm_controller.cur_policy.enter()
+    fsm_controller.FSMmode = FSMMode.NORMAL
+    print("Switched to ", fsm_controller.cur_policy.name_str)
+    return True
+
+
+def reset_ball_for_table_policy(model, data, args, rng, default_ball_pos, default_ball_vel):
+    ball_pos, ball_vel = get_reset_ball_state(args, rng, default_ball_pos, default_ball_vel)
+    initialize_ball_state(model, data, ball_pos, ball_vel)
+    mujoco.mj_forward(model, data)
+
+
+def handle_keyboard_command(
+    key,
+    fsm_controller,
+    model,
+    data,
+    args,
+    rng,
+    default_ball_pos,
+    default_ball_vel,
+    selected_table_policy,
+):
+    if key is None:
+        return selected_table_policy
+    if key == "p":
+        switch_policy(fsm_controller, FSMStateName.PASSIVE)
+    elif key == "f":
+        switch_policy(fsm_controller, FSMStateName.FIXEDPOSE)
+    elif key == "l":
+        switch_policy(fsm_controller, FSMStateName.LOCOMODE)
+    elif key in TABLE_POLICY_BY_KEY:
+        selected_table_policy = TABLE_POLICY_BY_KEY[key]
+        print("Selected table tennis policy:", selected_table_policy)
+    elif key == "t":
+        if fsm_controller.cur_policy.name != FSMStateName.LOCOMODE:
+            print("Enter loco first: press 'l', then press 't' for table tennis.")
+            return selected_table_policy
+        reset_ball_for_table_policy(model, data, args, rng, default_ball_pos, default_ball_vel)
+        switch_policy(fsm_controller, selected_table_policy)
+    return selected_table_policy
+
+
+def print_keyboard_help(selected_table_policy):
+    print("Keyboard controls: p=passive, f=fixedpose, l=loco, t=table tennis, 1/2/3=select table policy, r=reset")
+    print("Selected table tennis policy:", selected_table_policy)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run Mujoco deployment without requiring a joystick.")
     parser.add_argument(
         "--start-policy",
-        default="table_tennis_distill",
-        choices=[
-            "passive",
-            "fixedpose",
-            "loco",
-            "dance",
-            "kungfu",
-            "kick",
-            "kungfu2",
-            "beyond_mimic",
-            "table_tennis",
-            "table_tennis_distill",
-            "table_tennis_rev_racket",
-        ],
+        default="passive",
+        choices=get_policy_choices(),
         help="Initial FSM policy when the simulation starts.",
+    )
+    parser.add_argument(
+        "--table-policy",
+        default="table_tennis",
+        choices=get_policy_choices(include_base=False),
+        help="Table tennis policy entered by pressing 't' after loco.",
     )
     parser.add_argument(
         "--debug-frames",
@@ -193,6 +268,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Use --ball-pos exactly for the first full reset instead of sampling the g1-main reset range.",
     )
+    parser.add_argument(
+        "--base-height",
+        type=float,
+        default=0.76,
+        help="Initial robot base height. The default 0.76 matches g1-main's G1_RACKET_CFG init_state.pos.",
+    )
     args = parser.parse_args()
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -211,15 +292,13 @@ if __name__ == "__main__":
     rng = np.random.default_rng()
     default_ball_pos = np.array(args.ball_pos, dtype=np.float32)
     default_ball_vel = np.array(args.ball_vel, dtype=np.float32)
-    if args.fixed_initial_ball:
-        initial_ball_pos = default_ball_pos.copy()
-        initial_ball_vel = default_ball_vel.copy()
-    else:
-        initial_ball_pos, initial_ball_vel = sample_ball_reset_state(
-            rng, default_ball_pos, default_ball_vel
-        )
+    initial_ball_pos, initial_ball_vel = get_reset_ball_state(
+        args, rng, default_ball_pos, default_ball_vel
+    )
 
     reset_requested = [False]
+    keyboard_command = [None]
+    selected_table_policy = [args.table_policy]
 
     def key_callback(keycode):
         try:
@@ -228,6 +307,8 @@ if __name__ == "__main__":
             return
         if key == "r":
             reset_requested[0] = True
+        elif key in ("p", "f", "l", "t", "1", "2", "3"):
+            keyboard_command[0] = key
 
     (
         state_cmd,
@@ -242,10 +323,14 @@ if __name__ == "__main__":
         d,
         args.start_policy,
         robot_qpos_slice,
+        robot_qvel_slice,
         num_joints,
+        args.base_height,
         initial_ball_pos,
         initial_ball_vel,
     )
+
+    print_keyboard_help(selected_table_policy[0])
 
     running = True
     with mujoco.viewer.launch_passive(m, d, key_callback=key_callback) as viewer:
@@ -253,13 +338,9 @@ if __name__ == "__main__":
             step_start = time.time()
             try:
                 if reset_requested[0]:
-                    if args.fixed_initial_ball:
-                        reset_ball_pos = default_ball_pos.copy()
-                        reset_ball_vel = default_ball_vel.copy()
-                    else:
-                        reset_ball_pos, reset_ball_vel = sample_ball_reset_state(
-                            rng, default_ball_pos, default_ball_vel
-                        )
+                    reset_ball_pos, reset_ball_vel = get_reset_ball_state(
+                        args, rng, default_ball_pos, default_ball_vel
+                    )
                     with viewer.lock():
                         (
                             state_cmd,
@@ -274,7 +355,9 @@ if __name__ == "__main__":
                             d,
                             args.start_policy,
                             robot_qpos_slice,
+                            robot_qvel_slice,
                             num_joints,
+                            args.base_height,
                             reset_ball_pos,
                             reset_ball_vel,
                         )
@@ -296,13 +379,9 @@ if __name__ == "__main__":
                 mujoco.mj_step(m, d)
                 sim_counter += 1
 
-                if args.start_policy in (
-                    "table_tennis",
-                    "table_tennis_distill",
-                    "table_tennis_rev_racket",
-                ) and ball_is_outside_demo_area(m, d):
-                    reset_ball_pos, reset_ball_vel = sample_ball_reset_state(
-                        rng, default_ball_pos, default_ball_vel
+                if FSM_controller.cur_policy.name in TABLE_POLICY_NAMES and ball_is_outside_demo_area(m, d):
+                    reset_ball_pos, reset_ball_vel = get_reset_ball_state(
+                        args, rng, default_ball_pos, default_ball_vel
                     )
                     initialize_ball_state(
                         m,
@@ -313,22 +392,19 @@ if __name__ == "__main__":
                     mujoco.mj_forward(m, d)
 
                 if sim_counter % control_decimation == 0:
-                    qj = d.qpos[robot_qpos_slice]
-                    dqj = d.qvel[robot_qvel_slice]
-                    base_pos = d.qpos[0:3]
-                    quat = d.qpos[3:7]
-                    base_lin_vel = quat_rotate_inverse(quat, d.qvel[0:3])
-                    omega = quat_rotate_inverse(quat, d.qvel[3:6])
-                    gravity_orientation = get_gravity_orientation(quat)
-
-                    state_cmd.q = qj.copy()
-                    state_cmd.dq = dqj.copy()
-                    state_cmd.base_pos = base_pos.copy()
-                    state_cmd.base_lin_vel = base_lin_vel.copy()
-                    state_cmd.ball_pos = get_ball_pos(m, d)
-                    state_cmd.gravity_ori = gravity_orientation.copy()
-                    state_cmd.base_quat = quat.copy()
-                    state_cmd.ang_vel = omega.copy()
+                    populate_state_cmd(m, d, state_cmd, robot_qpos_slice, robot_qvel_slice)
+                    selected_table_policy[0] = handle_keyboard_command(
+                        keyboard_command[0],
+                        FSM_controller,
+                        m,
+                        d,
+                        args,
+                        rng,
+                        default_ball_pos,
+                        default_ball_vel,
+                        selected_table_policy[0],
+                    )
+                    keyboard_command[0] = None
 
                     FSM_controller.run()
                     policy_output_action = policy_output.actions.copy()
@@ -336,9 +412,7 @@ if __name__ == "__main__":
                     kds = policy_output.kds.copy()
 
                     if args.debug_frames > 0 and FSM_controller.cur_policy.name in (
-                        FSMStateName.SKILL_TABLE_TENNIS,
-                        FSMStateName.SKILL_TABLE_TENNIS_DISTILL,
-                        FSMStateName.SKILL_TABLE_TENNIS_REV_RACKET,
+                        spec.key for spec in EXTRA_POLICY_SPECS
                     ):
                         policy = FSM_controller.cur_policy
                         print("\n[debug] frame", args.debug_frames)

@@ -4,16 +4,12 @@ sys.path.append(str(Path(__file__).parent.parent.absolute()))
 
 from common.path_config import PROJECT_ROOT
 
-import os
 import time
-
-os.environ.setdefault("PYGLFW_LIBRARY_VARIANT", "x11")
-os.environ.setdefault("GLFW_PLATFORM", "x11")
-
 import mujoco.viewer
 import mujoco
 import numpy as np
 import yaml
+import os
 from common.ctrlcomp import *
 from FSM.FSM import *
 from common.utils import get_gravity_orientation
@@ -27,7 +23,7 @@ def pd_control(target_q, q, kp, target_dq, dq, kd):
 
 if __name__ == "__main__":
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    mujoco_yaml_path = os.path.join(current_dir, "config", "g1_blind.yaml")
+    mujoco_yaml_path = os.path.join(current_dir, "config", "mujoco.yaml")
     with open(mujoco_yaml_path, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
         xml_path = os.path.join(PROJECT_ROOT, config["xml_path"])
@@ -87,17 +83,13 @@ if __name__ == "__main__":
                     
                     qj = d.qpos[7:]
                     dqj = d.qvel[6:]
-                    base_pos = d.qpos[0:3]
                     quat = d.qpos[3:7]
                     
-                    base_lin_vel = d.qvel[0:3]
                     omega = d.qvel[3:6] 
                     gravity_orientation = get_gravity_orientation(quat)
                     
                     state_cmd.q = qj.copy()
                     state_cmd.dq = dqj.copy()
-                    state_cmd.base_pos = base_pos.copy()
-                    state_cmd.base_lin_vel = base_lin_vel.copy()
                     state_cmd.gravity_ori = gravity_orientation.copy()
                     state_cmd.base_quat = quat.copy()
                     state_cmd.ang_vel = omega.copy()
