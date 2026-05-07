@@ -31,6 +31,7 @@ def get_policy_state(policy_name: str):
     policy_map = {
         "table_tennis": FSMStateName.SKILL_TABLE_TENNIS,
         "table_tennis_distill": FSMStateName.SKILL_TABLE_TENNIS_DISTILL,
+        "table_tennis_rev_racket": FSMStateName.SKILL_TABLE_TENNIS_REV_RACKET,
     }
     return policy_map[policy_name]
 
@@ -192,7 +193,7 @@ def parse_args():
     parser.add_argument(
         "--policy",
         default="table_tennis",
-        choices=["table_tennis", "table_tennis_distill"],
+        choices=["table_tennis", "table_tennis_distill", "table_tennis_rev_racket"],
         help="Table tennis policy to deploy. Names match deploy_mujoco_no_joystick.py --start-policy.",
     )
     parser.add_argument(

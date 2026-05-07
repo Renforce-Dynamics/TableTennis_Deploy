@@ -30,4 +30,5 @@ class PolicyOutput:
         self.actions = np.zeros(num_joints, dtype=np.float32)
         self.kps = np.zeros(num_joints, dtype=np.float32)
         self.kds = np.zeros(num_joints, dtype=np.float32)
+        self.tau_limit = np.zeros(num_joints, dtype=np.float32)
         

@@ -86,7 +86,7 @@
       geom1="ball_geom"
       geom2="right_racket_collision"
       friction="0.6 0.6 0.1 0.1 0.1"
-      solref="0.005 0.22"
+      solref="0.005 0.18"
       solimp="0.97 0.99 0.001"
     />
   </contact>

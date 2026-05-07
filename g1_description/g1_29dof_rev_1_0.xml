@@ -229,7 +229,8 @@
                           <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_wrist_yaw_link"/>
                           <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="right_wrist_yaw_link"/>
                           <geom pos="0.0415 -0.003 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_rubber_hand"/>
-                          <body name="right_racket" pos="0.2365 -0.003 0">
+                          <!-- <body name="right_racket" pos="0.2365 -0.003 0"> -->
+						  <body name="right_racket" pos="0.205 0.028 -0.005">
                             <inertial
                               pos="0 0 0"
                               mass="0.170"
@@ -239,22 +240,24 @@
                               name="right_racket_visual"
                               type="cylinder"
                               size="0.075 0.005"
-                              quat="0.70710678 0.70710678 0 0"
+                              quat="0.70613772 0.70613772 0.03700711 0.03700711"
                               rgba="0.7 0.7 0.7 1"
                               contype="0"
                               conaffinity="0"
                             />
+							<!-- quat="0.70710678 0.70710678 0 0" -->
                             <geom
                               name="right_racket_collision"
                               type="cylinder"
                               size="0.075 0.005"
-                              quat="0.70710678 0.70710678 0 0"
+                              quat="0.70613772 0.70613772 0.03700711 0.03700711"
                               contype="1"
                               conaffinity="1"
                               friction="0.6 0.1 0.1"
                               solref="0.005 0.17"
                               solimp="0.97 0.99 0.001"
                             />
+							<!-- quat="0.70710678 0.70710678 0 0" -->
                           </body>
                         </body>
                       </body>

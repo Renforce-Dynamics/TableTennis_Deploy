@@ -4,12 +4,16 @@ sys.path.append(str(Path(__file__).parent.parent.absolute()))
 
 from common.path_config import PROJECT_ROOT
 
+import os
 import time
+
+os.environ.setdefault("PYGLFW_LIBRARY_VARIANT", "x11")
+os.environ.setdefault("GLFW_PLATFORM", "x11")
+
 import mujoco.viewer
 import mujoco
 import numpy as np
 import yaml
-import os
 from common.ctrlcomp import *
 from FSM.FSM import *
 from common.utils import get_gravity_orientation

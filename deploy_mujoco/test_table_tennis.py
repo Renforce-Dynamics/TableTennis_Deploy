@@ -5,12 +5,16 @@ sys.path.append(str(Path(__file__).parent.parent.absolute()))
 from common.path_config import PROJECT_ROOT
 
 import argparse
+import os
 import time
+
+os.environ.setdefault("PYGLFW_LIBRARY_VARIANT", "x11")
+os.environ.setdefault("GLFW_PLATFORM", "x11")
+
 import mujoco.viewer
 import mujoco
 import numpy as np
 import yaml
-import os
 from common.ctrlcomp import *
 from FSM.FSM import *
 from common.utils import get_gravity_orientation
@@ -33,6 +37,7 @@ def get_policy_state(policy_name: str):
         "beyond_mimic": FSMStateName.SKILL_BEYOND_MIMIC,
         "table_tennis": FSMStateName.SKILL_TABLE_TENNIS,
         "table_tennis_distill": FSMStateName.SKILL_TABLE_TENNIS_DISTILL,
+        "table_tennis_rev_racket": FSMStateName.SKILL_TABLE_TENNIS_REV_RACKET,
     }
     return policy_map[policy_name]
 
@@ -107,7 +112,7 @@ def quat_rotate_inverse(quat_wxyz, vec_xyz):
 
 
 def apply_initial_configuration(model, data, start_policy, robot_qpos_slice, ball_pos, ball_vel):
-    if start_policy in ("table_tennis", "table_tennis_distill"):
+    if start_policy in ("table_tennis", "table_tennis_distill", "table_tennis_rev_racket"):
         data.qpos[2] = 0.76
         data.qpos[robot_qpos_slice] = load_default_joint_pos()
         data.qvel[:] = 0.0
@@ -159,6 +164,7 @@ if __name__ == "__main__":
             "beyond_mimic",
             "table_tennis",
             "table_tennis_distill",
+            "table_tennis_rev_racket",
         ],
         help="Initial FSM policy when the simulation starts.",
     )
@@ -284,11 +290,17 @@ if __name__ == "__main__":
                     d.qvel[robot_qvel_slice],
                     kds,
                 )
+                if np.any(policy_output.tau_limit > 0.0):
+                    tau = np.clip(tau, -policy_output.tau_limit, policy_output.tau_limit)
                 d.ctrl[:] = tau
                 mujoco.mj_step(m, d)
                 sim_counter += 1
 
-                if args.start_policy in ("table_tennis", "table_tennis_distill") and ball_is_outside_demo_area(m, d):
+                if args.start_policy in (
+                    "table_tennis",
+                    "table_tennis_distill",
+                    "table_tennis_rev_racket",
+                ) and ball_is_outside_demo_area(m, d):
                     reset_ball_pos, reset_ball_vel = sample_ball_reset_state(
                         rng, default_ball_pos, default_ball_vel
                     )
@@ -313,7 +325,7 @@ if __name__ == "__main__":
                     state_cmd.dq = dqj.copy()
                     state_cmd.base_pos = base_pos.copy()
                     state_cmd.base_lin_vel = base_lin_vel.copy()
-                    state_cmd.ball_pos = np.array([3.5, -0.2, 1.0]) # get_ball_pos(m, d)
+                    state_cmd.ball_pos = get_ball_pos(m, d)
                     state_cmd.gravity_ori = gravity_orientation.copy()
                     state_cmd.base_quat = quat.copy()
                     state_cmd.ang_vel = omega.copy()
@@ -326,6 +338,7 @@ if __name__ == "__main__":
                     if args.debug_frames > 0 and FSM_controller.cur_policy.name in (
                         FSMStateName.SKILL_TABLE_TENNIS,
                         FSMStateName.SKILL_TABLE_TENNIS_DISTILL,
+                        FSMStateName.SKILL_TABLE_TENNIS_REV_RACKET,
                     ):
                         policy = FSM_controller.cur_policy
                         print("\n[debug] frame", args.debug_frames)

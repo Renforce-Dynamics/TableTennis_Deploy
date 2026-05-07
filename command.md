@@ -15,6 +15,7 @@ python deploy_mujoco/deploy_mujoco_no_joystick.py --start-policy table_tennis
 
 ```bash
 uv run --group real deploy_real/deploy_real_table_tennis.py --policy table_tennis_distill
+uv run --group real deploy_real/deploy_real_table_tennis.py --policy table_tennis_rev_racket
 ```
 
 遥控流程：
@@ -33,6 +34,7 @@ SELECT：退出程序
 ```bash
 --policy table_tennis
 --policy table_tennis_distill
+--policy table_tennis_rev_racket
 ```
 
 我也加了保护：如果你没先进 `LOCO` 就按 `B+R1`，不会直接切任务，会提示：

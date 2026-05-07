@@ -40,6 +40,7 @@ def get_policy_state(policy_name: str):
         "beyond_mimic": FSMStateName.SKILL_BEYOND_MIMIC,
         "table_tennis": FSMStateName.SKILL_TABLE_TENNIS,
         "table_tennis_distill": FSMStateName.SKILL_TABLE_TENNIS_DISTILL,
+        "table_tennis_rev_racket": FSMStateName.SKILL_TABLE_TENNIS_REV_RACKET,
     }
     return policy_map[policy_name]
 
@@ -210,6 +211,7 @@ def parse_args():
             "beyond_mimic",
             "table_tennis",
             "table_tennis_distill",
+            "table_tennis_rev_racket",
         ],
         help="Initial FSM policy when the real-robot controller starts.",
     )

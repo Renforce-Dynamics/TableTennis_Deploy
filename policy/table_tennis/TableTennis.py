@@ -17,6 +17,7 @@ class TableTennis(FSMState):
     fsm_state_name = FSMStateName.SKILL_TABLE_TENNIS
     policy_name_str = "skill_table_tennis"
     include_base_lin_vel = True
+    prime_history_on_first_obs = True
 
     def __init__(self, state_cmd: StateAndCmd, policy_output: PolicyOutput):
         super().__init__()
@@ -129,6 +130,7 @@ class TableTennis(FSMState):
             self.latest_obs_terms = {
                 name: np.zeros(dim, dtype=np.float32) for name, dim in self.term_dims.items()
             }
+            self.history_initialized = False
 
         self._validate_config()
         self.policy_available = False
@@ -255,15 +257,21 @@ class TableTennis(FSMState):
         self.latest_obs_terms = {name: value.copy() for name, value in obs_terms.items()}
 
         obs_chunks = []
+        prime_history = self.prime_history_on_first_obs and not self.history_initialized
         for name in self.term_order:
             value = np.asarray(obs_terms[name], dtype=np.float32).reshape(-1)
             if value.shape[0] != self.term_dims[name]:
                 raise ValueError(
                     f"TableTennis term '{name}' mismatch: got {value.shape[0]}, expected {self.term_dims[name]}"
                 )
-            self.term_history[name] = np.roll(self.term_history[name], shift=-1, axis=0)
-            self.term_history[name][-1] = value
+            if prime_history:
+                self.term_history[name][:] = value
+            else:
+                self.term_history[name] = np.roll(self.term_history[name], shift=-1, axis=0)
+                self.term_history[name][-1] = value
             obs_chunks.append(self.term_history[name].reshape(-1))
+        if prime_history:
+            self.history_initialized = True
 
         obs = np.concatenate(obs_chunks, axis=-1, dtype=np.float32)
         if obs.shape[0] != self.num_obs:
@@ -275,6 +283,7 @@ class TableTennis(FSMState):
         self.ref_motion_phase = 0.0
         self.obs.fill(0.0)
         self.action.fill(0.0)
+        self.history_initialized = False
         for history in self.term_history.values():
             history.fill(0.0)
         for value in self.latest_obs_terms.values():
@@ -285,6 +294,7 @@ class TableTennis(FSMState):
             self.policy_output.actions = self.default_angles.astype(np.float32)
             self.policy_output.kps = self.kps.copy()
             self.policy_output.kds = self.kds.copy()
+            self.policy_output.tau_limit = self.tau_limit[self.train_to_mj].copy()
             return
 
         self.obs = self._build_obs()
@@ -295,10 +305,12 @@ class TableTennis(FSMState):
         target_dof_pos = target_dof_pos_train[self.train_to_mj]
         kps = self.kps[self.train_to_mj]
         kds = self.kds[self.train_to_mj]
+        tau_limit = self.tau_limit[self.train_to_mj]
 
         self.policy_output.actions = target_dof_pos.astype(np.float32)
         self.policy_output.kps = kps.astype(np.float32)
         self.policy_output.kds = kds.astype(np.float32)
+        self.policy_output.tau_limit = tau_limit.astype(np.float32)
 
         self.counter_step += 1
         motion_time = self.counter_step * self.control_dt
@@ -315,6 +327,7 @@ class TableTennis(FSMState):
         self.ref_motion_phase = 0.0
         self.obs.fill(0.0)
         self.action.fill(0.0)
+        self.history_initialized = False
         for history in self.term_history.values():
             history.fill(0.0)
         for value in self.latest_obs_terms.values():
