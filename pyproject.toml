@@ -5,16 +5,16 @@ description = "Multi-policy deployment framework for the Unitree G1 robot."
 readme = "README.md"
 requires-python = ">=3.8,<3.9"
 dependencies = [
-    "numpy>=1.21.6,<2",
+    "numpy>=1.21.6,<2.0",
     "onnx>=1.16,<2",
     "onnxruntime>=1.18,<1.20",
-    "PyYAML>=6,<7",
+    "pyyaml>=6,<7",
     "scipy>=1.10,<2",
     "torch==2.3.1",
     "torchaudio==2.3.1",
     "torchvision==0.18.1",
-    "mujoco",
-    "pygame"
+    "mujoco>=3.0.0",
+    "pygame>=2.5.0",
 ]
 
 [dependency-groups]
@@ -31,7 +31,15 @@ package = false
 
 [tool.uv.sources]
 unitree-sdk2py = { path = "../unitree_sdk2_python", editable = true }
+torch = { index = "pytorch" }
+torchvision = { index = "pytorch" }
+torchaudio = { index = "pytorch" }
 
 [[tool.uv.index]]
 url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/"
 default = true
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true

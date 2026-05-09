@@ -118,6 +118,8 @@ class LocoMode(FSMState):
             return FSMStateName.SKILL_KICK
         elif(self.state_cmd.skill_cmd == FSMCommand.SKILL_4):
             return FSMStateName.SKILL_BEYOND_MIMIC
+        elif(self.state_cmd.skill_cmd == FSMCommand.TABLE_TENNIS):
+            return FSMStateName.SKILL_TABLE_TENNIS
         elif(self.state_cmd.skill_cmd == FSMCommand.PASSIVE):
             return FSMStateName.PASSIVE
         else:
