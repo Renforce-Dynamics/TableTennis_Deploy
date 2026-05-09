@@ -59,6 +59,7 @@ class FSM:
             except Exception as exc:
                 print(f"extra policy {spec.key} unavailable: {exc}")
                 continue
+            self.policy_map[spec.state] = policy
             self.policy_map[spec.key] = policy
         
         print("initalized all policies!!!")
