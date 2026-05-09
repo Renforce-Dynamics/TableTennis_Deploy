@@ -116,6 +116,12 @@ class Controller:
             #     self.state_cmd.skill_cmd = FSMCommand.SKILL_4
             if self.remote_controller.is_button_pressed(KeyMap.B) and self.remote_controller.is_button_pressed(KeyMap.L1):
                 self.state_cmd.skill_cmd = FSMCommand.TABLE_TENNIS
+            if self.remote_controller.is_button_pressed(KeyMap.A) and self.remote_controller.is_button_pressed(KeyMap.L1):
+                self.state_cmd.skill_cmd = FSMCommand.TRACK_MOTION_ISAACLAB
+            if self.remote_controller.is_button_pressed(KeyMap.X) and self.remote_controller.is_button_pressed(KeyMap.L1):
+                self.state_cmd.skill_cmd = FSMCommand.TRACK_MOTION_MJLAB
+            if self.remote_controller.is_button_pressed(KeyMap.Y) and self.remote_controller.is_button_pressed(KeyMap.L1):
+                self.state_cmd.skill_cmd = FSMCommand.TRACK_MOTION_MOVABLE_BASE
             
             self.state_cmd.vel_cmd[0] =  self.remote_controller.ly
             self.state_cmd.vel_cmd[1] =  self.remote_controller.lx * -1

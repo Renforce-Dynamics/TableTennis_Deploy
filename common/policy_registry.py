@@ -50,6 +50,12 @@ EXTRA_POLICY_SPECS = (
         "TrackMotionMjlab",
     ),
     ExtraPolicySpec(
+        "track_motion_isaaclab",
+        FSMStateName.SKILL_TRACK_MOTION_ISAACLAB,
+        "policy.track_motion_isaaclab.TrackMotionIsaaclab",
+        "TrackMotionIsaaclab",
+    ),
+    ExtraPolicySpec(
         "track_motion_movable_base",
         FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE,
         "policy.track_motion_movable_base.TrackMotionMovableBase",

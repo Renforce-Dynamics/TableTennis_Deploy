@@ -63,6 +63,16 @@ class TableTennisController:
         self.counter_over_time = 0
         self.last_policy_hint_time = 0.0
 
+        print("=" * 50)
+        print("Table Tennis Controller Initialized")
+        print("Controls:")
+        print("  F1       - PASSIVE mode")
+        print("  START    - FIXEDPOSE mode")
+        print("  A + R1   - LOCO mode")
+        print("  B + R1   - selected table-tennis policy")
+        print("  SELECT   - Exit program")
+        print("=" * 50)
+
     def switch_to_policy(self, policy_name):
         if self.fsm_controller.cur_policy.name == policy_name:
             return

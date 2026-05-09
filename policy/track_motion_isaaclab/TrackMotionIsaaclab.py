@@ -12,13 +12,13 @@ import os
 from typing import Tuple
 
 
-class TrackMotionMovableBase(FSMState):
+class TrackMotionIsaaclab(FSMState):
     def __init__(self, state_cmd: StateAndCmd, policy_output: PolicyOutput):
         super().__init__()
         self.state_cmd = state_cmd
         self.policy_output = policy_output
-        self.name = FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE
-        self.name_str = "skill_track_motion_movable_base"
+        self.name = FSMStateName.SKILL_TRACK_MOTION_ISAACLAB
+        self.name_str = "skill_track_motion_isaaclab"
         self.counter_step = 0
         self.ref_motion_phase = 0.0
 
@@ -34,7 +34,7 @@ class TrackMotionMovableBase(FSMState):
             "right_wrist_yaw_joint",
         ]
 
-        # RL training joint order (Isaac Gym / track_motion_movable_base)
+        # RL training joint order (Isaac Gym / track_motion_isaaclab)
         
         #下面的是isaaclab
         self.train_joint_names = [
@@ -67,7 +67,7 @@ class TrackMotionMovableBase(FSMState):
         )
 
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(current_dir, "config", "TrackMotionMovableBase.yaml")
+        config_path = os.path.join(current_dir, "config", "TrackMotionIsaaclab.yaml")
         config = self._load_config(config_path)
 
         self.onnx_path = self._resolve_path(current_dir, config.get("onnx_path", "model/policy.onnx"))
@@ -80,14 +80,14 @@ class TrackMotionMovableBase(FSMState):
         self.motion_length = float(config.get("motion_length", 0.0))
 
         self.ang_vel_scale = float(config.get("ang_vel_scale", 1.0))
-        self.lin_vel_scale = float(config.get("lin_vel_scale", 1.0))
+        # self.lin_vel_scale = float(config.get("lin_vel_scale", 1.0))
         self.dof_pos_scale = float(config.get("dof_pos_scale", 1.0))
         self.dof_vel_scale = float(config.get("dof_vel_scale", 1.0))
         self.use_external_data = bool(config.get("use_external_data", True))
         self.obs_clip = float(config.get("obs_clip", 100.0))
         self.action_clip = float(config.get("action_clip", 5.0))
 
-        # track_motion_movable_base command defaults
+        # track_motion_isaaclab command defaults
         self.base_target_pos = np.array(config.get("base_target_pos", [0.0, 0.0]), dtype=np.float32)
         self.racket_target_pos_w_default = np.array(
             config.get("racket_target_pos_w", [0.4, -0.45, 0.25]), dtype=np.float32
@@ -109,7 +109,7 @@ class TrackMotionMovableBase(FSMState):
         )
         base_target_pos_range_cfg = config.get("base_target_pos_range", {}) or {}
         if not isinstance(base_target_pos_range_cfg, dict):
-            raise ValueError("TrackMotionMovableBase base_target_pos_range must be a mapping.")
+            raise ValueError("TrackMotionIsaaclab base_target_pos_range must be a mapping.")
         self.base_target_pos_y_range = self._range_from_config(
             base_target_pos_range_cfg.get("pos_y", None),
             float(self.base_target_pos[1]),
@@ -179,14 +179,14 @@ class TrackMotionMovableBase(FSMState):
         try:
             self._load_policy()
             self.policy_available = True
-            print("TrackMotionMovableBase policy initializing ...")
+            print("TrackMotionIsaaclab policy initializing ...")
         except Exception as exc:
             self.init_error = str(exc)
-            print(f"TrackMotionMovableBase policy unavailable: {self.init_error}")
+            print(f"TrackMotionIsaaclab policy unavailable: {self.init_error}")
 
     def _load_config(self, config_path: str):
         if not os.path.exists(config_path):
-            print(f"TrackMotionMovableBase config not found: {config_path}, fallback to defaults.")
+            print(f"TrackMotionIsaaclab config not found: {config_path}, fallback to defaults.")
             return {}
         with open(config_path, "r") as f:
             return yaml.load(f, Loader=yaml.FullLoader)
@@ -206,7 +206,7 @@ class TrackMotionMovableBase(FSMState):
         if arr.shape[0] == 1 and length > 1:
             arr = np.full(length, float(arr[0]), dtype=np.float32)
         if arr.shape[0] != length:
-            raise ValueError(f"TrackMotionMovableBase {key} size must be 1 or {length}, got {arr.shape[0]}")
+            raise ValueError(f"TrackMotionIsaaclab {key} size must be 1 or {length}, got {arr.shape[0]}")
         return arr[self.mj_to_train]
 
     def _range_from_config(self, value, default: float) -> Tuple[float, float]:
@@ -218,7 +218,7 @@ class TrackMotionMovableBase(FSMState):
         elif arr.shape[0] == 2:
             low, high = float(arr[0]), float(arr[1])
         else:
-            raise ValueError(f"TrackMotionMovableBase range expects 1 or 2 values, got {arr.shape[0]}")
+            raise ValueError(f"TrackMotionIsaaclab range expects 1 or 2 values, got {arr.shape[0]}")
         if low > high:
             low, high = high, low
         return low, high
@@ -226,7 +226,7 @@ class TrackMotionMovableBase(FSMState):
     def _load_racket_target_pose_range(self, section, fallback_pos: np.ndarray, fallback_vel: np.ndarray):
         section = section or {}
         if not isinstance(section, dict):
-            raise ValueError("TrackMotionMovableBase racket target pose range config must be a mapping.")
+            raise ValueError("TrackMotionIsaaclab racket target pose range config must be a mapping.")
         return {
             "pos_x": self._range_from_config(section.get("pos_x", None), float(fallback_pos[0])),
             "pos_y": self._range_from_config(section.get("pos_y", None), float(fallback_pos[1])),
@@ -338,25 +338,25 @@ class TrackMotionMovableBase(FSMState):
 
     def _validate_config(self):
         if self.default_angles.shape[0] != self.num_actions:
-            raise ValueError("TrackMotionMovableBase default_angles size must match num_actions.")
+            raise ValueError("TrackMotionIsaaclab default_angles size must match num_actions.")
         if self.kps.shape[0] != self.num_actions or self.kds.shape[0] != self.num_actions:
-            raise ValueError("TrackMotionMovableBase kps/kds size must match num_actions.")
+            raise ValueError("TrackMotionIsaaclab kps/kds size must match num_actions.")
         if self.action_scale.shape[0] not in (1, self.num_actions):
-            raise ValueError("TrackMotionMovableBase action_scale must have length 1 or num_actions.")
+            raise ValueError("TrackMotionIsaaclab action_scale must have length 1 or num_actions.")
         if self.obs_dim * self.history_length != self.num_obs:
-            raise ValueError("TrackMotionMovableBase obs_dim * history_length must equal num_obs.")
+            raise ValueError("TrackMotionIsaaclab obs_dim * history_length must equal num_obs.")
         if self.base_target_pos.shape[0] != 2:
-            raise ValueError("TrackMotionMovableBase base_target_pos must contain 2 values.")
+            raise ValueError("TrackMotionIsaaclab base_target_pos must contain 2 values.")
         if self.racket_target_pos_w_default.shape[0] != 3:
-            raise ValueError("TrackMotionMovableBase racket_target_pos_w must contain 3 values.")
+            raise ValueError("TrackMotionIsaaclab racket_target_pos_w must contain 3 values.")
         if self.racket_target_vel_w_default.shape[0] != 3:
-            raise ValueError("TrackMotionMovableBase racket_target_vel_w must contain 3 values.")
+            raise ValueError("TrackMotionIsaaclab racket_target_vel_w must contain 3 values.")
         if self.command_time_step_total <= 0:
-            raise ValueError("TrackMotionMovableBase command_time_step_total must be positive.")
+            raise ValueError("TrackMotionIsaaclab command_time_step_total must be positive.")
 
     def _load_policy(self):
         if self.use_external_data and not os.path.exists(self.onnx_data_path):
-            print(f"TrackMotionMovableBase external data file not found: {self.onnx_data_path}, continue without it.")
+            print(f"TrackMotionIsaaclab external data file not found: {self.onnx_data_path}, continue without it.")
 
         self._fill_from_onnx_metadata_if_needed()
 
@@ -364,7 +364,7 @@ class TrackMotionMovableBase(FSMState):
         inputs = self.ort_session.get_inputs()
         outputs = self.ort_session.get_outputs()
         if len(outputs) != 1:
-            raise ValueError("TrackMotionMovableBase expects single output ONNX policy.")
+            raise ValueError("TrackMotionIsaaclab expects single output ONNX policy.")
 
         self.input_names = [inp.name for inp in inputs]
         self.output_name = outputs[0].name
@@ -381,9 +381,9 @@ class TrackMotionMovableBase(FSMState):
         out_shape = outputs[0].shape
 
         if isinstance(obs_shape[-1], int) and obs_shape[-1] != self.num_obs:
-            raise ValueError(f"TrackMotionMovableBase num_obs mismatch: config={self.num_obs}, onnx={obs_shape[-1]}")
+            raise ValueError(f"TrackMotionIsaaclab num_obs mismatch: config={self.num_obs}, onnx={obs_shape[-1]}")
         if isinstance(out_shape[-1], int) and out_shape[-1] != self.num_actions:
-            raise ValueError(f"TrackMotionMovableBase num_actions mismatch: config={self.num_actions}, onnx={out_shape[-1]}")
+            raise ValueError(f"TrackMotionIsaaclab num_actions mismatch: config={self.num_actions}, onnx={out_shape[-1]}")
 
         # Warm-up
         for _ in range(5):
@@ -473,7 +473,7 @@ class TrackMotionMovableBase(FSMState):
             value = np.asarray(obs_terms[name], dtype=np.float32).reshape(-1)
             if value.shape[0] != self.term_dims[name]:
                 raise ValueError(
-                    f"TrackMotionMovableBase obs term '{name}' mismatch: {value.shape[0]} != {self.term_dims[name]}"
+                    f"TrackMotionIsaaclab obs term '{name}' mismatch: {value.shape[0]} != {self.term_dims[name]}"
                 )
             self.term_history[name] = np.roll(self.term_history[name], shift=-1, axis=0)
             self.term_history[name][-1] = value
@@ -483,7 +483,7 @@ class TrackMotionMovableBase(FSMState):
         if self.obs_clip > 0.0:
             obs = np.clip(obs, -self.obs_clip, self.obs_clip)
         if obs.shape[0] != self.num_obs:
-            raise ValueError(f"TrackMotionMovableBase obs mismatch: got {obs.shape[0]}, expected {self.num_obs}")
+            raise ValueError(f"TrackMotionIsaaclab obs mismatch: got {obs.shape[0]}, expected {self.num_obs}")
         return obs
 
     def enter(self):
@@ -569,4 +569,4 @@ class TrackMotionMovableBase(FSMState):
             return FSMStateName.FIXEDPOSE
         else:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
-            return FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE
+            return FSMStateName.SKILL_TRACK_MOTION_ISAACLAB
