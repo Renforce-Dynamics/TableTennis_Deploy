@@ -31,8 +31,8 @@ class LandingCommandOutput:
 class LandingCommandGenerator:
     """Numpy single-robot landing command generator for deployment.
 
-    It converts ball state into the 4 command fields consumed by
-    policy.track_motion_mjlab.TrackMotionMjlab:
+    It converts ball state into the 4 command fields consumed by the
+    command-conditioned track-motion policies:
 
       - base_pos_target, shape [2]
       - rel_racket_target_pos_w, shape [3]
@@ -80,6 +80,7 @@ class LandingCommandGenerator:
             fit_window=int(planner_cfg.get("fit_window", 31)),
             poly_order=int(planner_cfg.get("poly_order", 2)),
             bounce_z_tol=float(planner_cfg.get("bounce_z_tol", 0.02)),
+            max_table_bounces=int(planner_cfg.get("max_table_bounces", 8)),
         )
         self.model_planner = HopeModelBasedPlanner(self.table, self.physics, self.cfg)
         self.hope_planner = HOPEPlanner(self.physics, self.cfg, self.table)
@@ -92,6 +93,16 @@ class LandingCommandGenerator:
         self.min_time_to_hit_s = float(command_cfg.get("min_time_to_hit_s", 0.03))
         self.max_time_to_hit_s = float(command_cfg.get("max_time_to_hit_s", 2.0))
         self.command_hold_s = float(command_cfg.get("command_hold_s", 0.10))
+        self.post_hit_x_margin = float(command_cfg.get("post_hit_x_margin", 0.0))
+        self.incoming_vx_threshold = float(command_cfg.get("incoming_vx_threshold", -0.05))
+        self.inactive_time_s = float(command_cfg.get("inactive_time_s", self.activate_before_hit_s))
+        self.inactive_rel_racket_target_pos_w = self._vec3(
+            command_cfg.get("inactive_rel_racket_target_pos_w", [0.40, -0.10, 0.25])
+        )
+        self.inactive_racket_target_vel_w = self._vec3(
+            command_cfg.get("inactive_racket_target_vel_w", [0.0, 0.0, 0.0])
+        )
+        self._no_hold_invalid_reasons = {"passed_hit", "time_to_hit_expired"}
 
         self.forehand_y_range = self._range(command_cfg.get("forehand_y_range", [-0.60, -0.30]))
         self.backhand_y_range = self._range(command_cfg.get("backhand_y_range", [-0.10, 0.30]))
@@ -111,7 +122,6 @@ class LandingCommandGenerator:
         self.pos_blend_alpha = float(command_cfg.get("pos_blend_alpha", 0.45))
         self.vel_blend_alpha = float(command_cfg.get("vel_blend_alpha", 0.35))
         self.base_blend_alpha = float(command_cfg.get("base_blend_alpha", 0.35))
-        self.time_blend_alpha = float(command_cfg.get("time_blend_alpha", 0.35))
 
         self._last_output: LandingCommandOutput | None = None
         self._last_valid_t: float | None = None
@@ -174,15 +184,70 @@ class LandingCommandGenerator:
         robot_base_pos_w = np.asarray(robot_base_pos_w, dtype=np.float64).reshape(3)
 
         output = self._plan(ball_pos_w, ball_vel_w, robot_base_pos_w, float(episode_time_s))
+        return self._finalize_output(output, float(episode_time_s), float(dt))
+
+    def update_from_prediction(
+        self,
+        predicted_hit_ball_pos_w: np.ndarray,
+        predicted_hit_ball_vel_w: np.ndarray,
+        time_to_hit_s: float,
+        ball_pos_w: np.ndarray,
+        ball_vel_w: np.ndarray,
+        robot_base_pos_w: np.ndarray,
+        dt: float = 0.02,
+        episode_time_s: float | None = None,
+    ) -> LandingCommandOutput:
+        if episode_time_s is None:
+            self._sim_time_s += float(dt)
+            episode_time_s = self._sim_time_s
+        else:
+            self._sim_time_s = float(episode_time_s)
+
+        ball_pos_w = np.asarray(ball_pos_w, dtype=np.float64).reshape(3)
+        ball_vel_w = np.asarray(ball_vel_w, dtype=np.float64).reshape(3)
+        robot_base_pos_w = np.asarray(robot_base_pos_w, dtype=np.float64).reshape(3)
+
+        if (
+            ball_vel_w[0] < self.incoming_vx_threshold
+            and ball_pos_w[0] <= float(self.cfg.x_hit) - self.post_hit_x_margin
+        ):
+            output = self._invalid("passed_hit", robot_base_pos_w)
+        else:
+            p_hit = np.asarray(predicted_hit_ball_pos_w, dtype=np.float64).reshape(3)
+            v_hit = np.asarray(predicted_hit_ball_vel_w, dtype=np.float64).reshape(3)
+            target_land = np.array(
+                [self.target_land_xy[0], self.target_land_xy[1], self.table.z_surface + self.physics.radius],
+                dtype=np.float64,
+            )
+            v_racket = self._compute_racket_velocity(p_hit, v_hit, target_land)
+            output = self._build_command_from_strike(
+                p_hit=p_hit,
+                v_hit=v_hit,
+                v_racket=v_racket,
+                time_to_hit=float(time_to_hit_s),
+                target_land=target_land,
+                robot_base_pos_w=robot_base_pos_w,
+            )
+        return self._finalize_output(output, float(episode_time_s), float(dt))
+
+    def _finalize_output(
+        self,
+        output: LandingCommandOutput,
+        episode_time_s: float,
+        dt: float,
+    ) -> LandingCommandOutput:
         if output.valid:
             self._last_output = output
-            self._last_valid_t = float(episode_time_s)
+            self._last_valid_t = episode_time_s
+            return output
+
+        if output.reason in self._no_hold_invalid_reasons:
             return output
 
         if (
             self._last_output is not None
             and self._last_valid_t is not None
-            and float(episode_time_s) - self._last_valid_t <= self.command_hold_s
+            and episode_time_s - self._last_valid_t <= self.command_hold_s
         ):
             held = self._last_output
             return LandingCommandOutput(
@@ -191,7 +256,7 @@ class LandingCommandGenerator:
                 rel_racket_target_pos_w=held.rel_racket_target_pos_w.copy(),
                 racket_target_vel_w=held.racket_target_vel_w.copy(),
                 racket_target_time=np.array(
-                    [max(float(held.racket_target_time[0]) - float(dt), self.min_time_to_hit_s)],
+                    [max(float(held.racket_target_time[0]) - dt, self.min_time_to_hit_s)],
                     dtype=np.float32,
                 ),
                 predicted_hit_ball_pos_w=held.predicted_hit_ball_pos_w.copy(),
@@ -211,7 +276,11 @@ class LandingCommandGenerator:
         robot_base_pos_w: np.ndarray,
         episode_time_s: float,
     ) -> LandingCommandOutput:
-        invalid = self._invalid("not_planned", robot_base_pos_w)
+        if (
+            ball_vel_w[0] < self.incoming_vx_threshold
+            and ball_pos_w[0] <= float(self.cfg.x_hit) - self.post_hit_x_margin
+        ):
+            return self._invalid("passed_hit", robot_base_pos_w)
 
         if self.planner_type == "hope":
             hope_cmd = self.hope_planner.update(episode_time_s, ball_pos_w, self.target_land_xy)
@@ -235,9 +304,29 @@ class LandingCommandGenerator:
                 dtype=np.float64,
             )
 
+        return self._build_command_from_strike(
+            p_hit=p_hit,
+            v_hit=v_hit,
+            v_racket=v_racket,
+            time_to_hit=time_to_hit,
+            target_land=target_land,
+            robot_base_pos_w=robot_base_pos_w,
+        )
+
+    def _build_command_from_strike(
+        self,
+        p_hit: np.ndarray,
+        v_hit: np.ndarray,
+        v_racket: np.ndarray,
+        time_to_hit: float,
+        target_land: np.ndarray,
+        robot_base_pos_w: np.ndarray,
+    ) -> LandingCommandOutput:
         if not np.all(np.isfinite(p_hit)) or not np.all(np.isfinite(v_racket)):
             return self._invalid("nan_or_inf", robot_base_pos_w)
-        if time_to_hit < self.min_time_to_hit_s or time_to_hit > self.max_time_to_hit_s:
+        if time_to_hit < self.min_time_to_hit_s:
+            return self._invalid("time_to_hit_expired", robot_base_pos_w)
+        if time_to_hit > self.max_time_to_hit_s:
             return self._invalid("time_to_hit_out_of_range", robot_base_pos_w)
         if time_to_hit > self.activate_before_hit_s:
             return self._invalid("too_early", robot_base_pos_w)
@@ -279,11 +368,6 @@ class LandingCommandGenerator:
                 v_racket,
                 self.vel_blend_alpha,
             )
-            time_arr = self._blend(
-                self._last_output.racket_target_time.astype(np.float64),
-                time_arr,
-                self.time_blend_alpha,
-            )
             time_arr[0] = np.clip(time_arr[0], self.min_time_to_hit_s, self.max_time_to_hit_s)
 
         desired_dir = target_land - p_hit
@@ -306,6 +390,26 @@ class LandingCommandGenerator:
             is_forehand=is_forehand,
             reason="ok",
         )
+
+    def _compute_racket_velocity(
+        self,
+        p_hit: np.ndarray,
+        v_hit: np.ndarray,
+        target_land: np.ndarray,
+    ) -> np.ndarray:
+        dt = max(float(self.cfg.delta_t_flight), 1.0e-3)
+        g = np.array(self.physics.g, dtype=np.float64)
+        v_outgoing = (target_land - p_hit) / dt - 0.5 * g * dt
+        delta_v = v_outgoing - v_hit
+        delta_v_norm = float(np.linalg.norm(delta_v))
+        if delta_v_norm < 1.0e-8:
+            return np.zeros(3, dtype=np.float64)
+        n_racket = delta_v / delta_v_norm
+        c_r = float(self.cfg.c_r)
+        v_o_n = float(np.dot(v_outgoing, n_racket))
+        v_i_n = float(np.dot(v_hit, n_racket))
+        v_r_n = (v_o_n + c_r * v_i_n) / max(1.0 + c_r, 1.0e-6)
+        return v_r_n * n_racket
 
     def _choose_forehand(self, rel_hit_y: float) -> bool:
         forehand_center = 0.5 * (self.forehand_y_range[0] + self.forehand_y_range[1])
@@ -332,9 +436,12 @@ class LandingCommandGenerator:
         return LandingCommandOutput(
             valid=False,
             base_pos_target=np.array([self.base_target_x, robot_base_pos_w[1]], dtype=np.float32),
-            rel_racket_target_pos_w=np.zeros(3, dtype=np.float32),
-            racket_target_vel_w=np.zeros(3, dtype=np.float32),
-            racket_target_time=np.array([self.max_time_to_hit_s], dtype=np.float32),
+            rel_racket_target_pos_w=self.inactive_rel_racket_target_pos_w.astype(np.float32),
+            racket_target_vel_w=self.inactive_racket_target_vel_w.astype(np.float32),
+            racket_target_time=np.array(
+                [np.clip(self.inactive_time_s, self.min_time_to_hit_s, self.max_time_to_hit_s)],
+                dtype=np.float32,
+            ),
             predicted_hit_ball_pos_w=np.zeros(3, dtype=np.float32),
             predicted_hit_ball_vel_w=np.zeros(3, dtype=np.float32),
             target_landing_pos_w=target_land,
@@ -345,20 +452,13 @@ class LandingCommandGenerator:
 
 
 def apply_landing_command_to_state(state_cmd, cmd: LandingCommandOutput) -> None:
-    """Write a LandingCommandOutput into StateAndCmd using TrackMotionMjlab's expected fields."""
+    """Write a LandingCommandOutput into StateAndCmd using track-motion command fields."""
     state_cmd.planner_valid = bool(cmd.valid)
     state_cmd.predicted_hit_ball_pos_w = cmd.predicted_hit_ball_pos_w.copy()
     state_cmd.predicted_hit_ball_vel_w = cmd.predicted_hit_ball_vel_w.copy()
     state_cmd.target_landing_pos_w = cmd.target_landing_pos_w.copy()
     state_cmd.desired_ball_dir_w = cmd.desired_ball_dir_w.copy()
     state_cmd.is_forehand = bool(cmd.is_forehand)
-
-    if not cmd.valid:
-        state_cmd.base_pos_target = None
-        state_cmd.rel_racket_target_pos_w = None
-        state_cmd.racket_target_vel_w = None
-        state_cmd.racket_target_time = None
-        return
 
     state_cmd.base_pos_target = cmd.base_pos_target.copy()
     state_cmd.rel_racket_target_pos_w = cmd.rel_racket_target_pos_w.copy()

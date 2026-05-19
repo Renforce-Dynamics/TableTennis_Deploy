@@ -4,11 +4,6 @@
 # onnx_path: "policy/track_motion/model/policy_isaaclab.onnx"
 onnx_path: "policy/track_motion_mjlab/model/policy_1.onnx"
 
-# Joint/order convention
-# The uploaded training XML uses MuJoCo/MJLab joint traversal order.
-joint_order: mjlab
-prefer_onnx_metadata_joint_names: false
-
 # Policy dimensions
 num_actions: 29
 num_obs: 104

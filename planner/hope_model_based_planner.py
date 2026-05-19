@@ -103,70 +103,51 @@ class HopeModelBasedPlanner:
       landing_xy=None,
     )
 
-    # General direction check:
-    # Do not assume the ball must move along -x.
-    # A valid ball only needs to reach x_hit in positive time.
-    t_direct = self._time_to_x(p0[0], v0[0], self.cfg.x_hit)
-    if t_direct is None or t_direct < 0.0 or t_direct > self.cfg.max_predict_time:
-      return invalid
+    p = np.copy(p0).astype(np.float64)
+    v = np.copy(v0).astype(np.float64)
+    t_total = 0.0
+    max_bounces = max(0, int(getattr(self.cfg, "max_table_bounces", 8)))
 
-    # ── Phase 1: possible pre-strike table bounce ───────────────────
-    t_bounce = self._time_to_z(p0[2], v0[2], self._zt)
+    for _bounce_idx in range(max_bounces + 1):
+      remaining_time = float(self.cfg.max_predict_time) - t_total
+      if remaining_time <= 1.0e-6:
+        return invalid
 
-    p_bounce: np.ndarray | None = None
-    v_bounce: np.ndarray | None = None
+      t_to_hit = self._time_to_x(p[0], v[0], self.cfg.x_hit)
+      t_to_table = self._time_to_descending_z(p[2], v[2], self._zt)
 
-    # If the ball is already very close to the table and moving upward,
-    # it is probably just after a bounce. Avoid predicting a fake immediate
-    # second bounce.
-    near_table_and_rising = p0[2] < self._zt + 0.1 and v0[2] > 0.0
-
-    # The bounce is useful only if it happens before the direct strike time.
-    if (
-      t_bounce is not None
-      and t_bounce > 1.0e-6
-      and t_bounce < t_direct
-      and not near_table_and_rising
-    ):
-      p_candidate = p0 + v0 * t_bounce + 0.5 * self._g * (t_bounce**2)
-
-      # Only accept the bounce if the contact point is inside the table.
-      if self._on_table(p_candidate):
-        v_pre = v0 + self._g * t_bounce
-        v_post = np.array(
-          [
-            self.physics.c_h * v_pre[0],
-            self.physics.c_h * v_pre[1],
-            -self.physics.c_v * v_pre[2],
-          ],
-          dtype=np.float64,
+      table_bounce_before_hit = False
+      if t_to_table is not None and t_to_table <= remaining_time:
+        p_table = p + v * t_to_table + 0.5 * self._g * (t_to_table**2)
+        table_bounce_before_hit = (
+          self._on_table(p_table)
+          and (t_to_hit is None or t_to_table < max(t_to_hit, 0.0))
         )
 
-        # After bounce, the ball must still be able to reach x_hit.
-        t_post = self._time_to_x(p_candidate[0], v_post[0], self.cfg.x_hit)
-        if t_post is not None and t_post >= 0.0:
-          t_total_candidate = t_bounce + t_post
-          if t_total_candidate <= self.cfg.max_predict_time:
-            p_bounce = p_candidate
-            v_bounce = v_post
+      if t_to_hit is not None and 0.0 <= t_to_hit <= remaining_time and not table_bounce_before_hit:
+        p_strike = p + v * t_to_hit + 0.5 * self._g * (t_to_hit**2)
+        v_strike = v + self._g * t_to_hit
+        t_total += float(t_to_hit)
+        break
 
-    if p_bounce is not None and v_bounce is not None:
-      # ── Phase 2: post-bounce → strike ─────────────────────────────
-      t_post = self._time_to_x(p_bounce[0], v_bounce[0], self.cfg.x_hit)
-      if t_post is None or t_post < 0.0:
+      if not table_bounce_before_hit:
         return invalid
 
-      t_total = t_bounce + t_post
-      if t_total > self.cfg.max_predict_time:
-        return invalid
-
-      p_strike = p_bounce + v_bounce * t_post + 0.5 * self._g * (t_post**2)
-      v_strike = v_bounce + self._g * t_post
+      p_bounce = p + v * t_to_table + 0.5 * self._g * (t_to_table**2)
+      p_bounce[2] = self._zt
+      v_pre = v + self._g * t_to_table
+      p = p_bounce
+      v = np.array(
+        [
+          self.physics.c_h * v_pre[0],
+          self.physics.c_h * v_pre[1],
+          -self.physics.c_v * v_pre[2],
+        ],
+        dtype=np.float64,
+      )
+      t_total += float(t_to_table)
     else:
-      # ── No bounce: direct flight → strike ─────────────────────────
-      t_total = t_direct
-      p_strike = p0 + v0 * t_total + 0.5 * self._g * (t_total**2)
-      v_strike = v0 + self._g * t_total
+      return invalid
 
     landing_xy = self._predict_landing_xy(p_strike, v_strike)
 
@@ -209,6 +190,29 @@ class HopeModelBasedPlanner:
     t2 = (-b + sqrt_disc) / (2.0 * a)
 
     ts = [t for t in (t1, t2) if t > 1.0e-6]
+    return min(ts) if ts else None
+
+  def _time_to_descending_z(self, z0: float, vz: float, z_target: float) -> float | None:
+    """Time for the next descending crossing of z_target."""
+    gz = float(self._g[2])
+
+    if abs(gz) < 1.0e-8:
+      if abs(vz) < 1.0e-8:
+        return None
+      t = (z_target - z0) / vz
+      return t if t > 1.0e-6 and vz < 0.0 else None
+
+    a = 0.5 * gz
+    b = float(vz)
+    c = float(z0 - z_target)
+
+    disc = b * b - 4.0 * a * c
+    if disc < 0.0:
+      return None
+
+    sqrt_disc = float(np.sqrt(disc))
+    roots = [(-b - sqrt_disc) / (2.0 * a), (-b + sqrt_disc) / (2.0 * a)]
+    ts = [t for t in roots if t > 1.0e-6 and vz + gz * t < -1.0e-6]
     return min(ts) if ts else None
 
   def _time_to_table(self, p0: np.ndarray, v0: np.ndarray) -> float | None:

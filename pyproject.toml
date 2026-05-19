@@ -30,7 +30,7 @@ real = [
 package = false
 
 [tool.uv.sources]
-unitree-sdk2py = { path = "../unitree_sdk2_python", editable = true }
+unitree-sdk2py = { path = "./unitree_sdk2_python", editable = true }
 torch = { index = "pytorch" }
 torchvision = { index = "pytorch" }
 torchaudio = { index = "pytorch" }

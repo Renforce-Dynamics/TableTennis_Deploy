@@ -26,6 +26,17 @@ from config import Config
 from deploy_real.ball_observer import ConstantBallObserver, UdpJsonBallObserver
 
 
+LANDING_POLICY_DEFAULT = "track_motion_movable_base"
+LANDING_POLICY_STATES = (
+    FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE,
+    FSMStateName.SKILL_TRACK_MOTION_MJLAB,
+)
+
+
+def is_landing_policy(policy_state):
+    return policy_state in LANDING_POLICY_STATES
+
+
 def clamp_targets(target_q, current_q, max_delta):
     return np.clip(target_q, current_q - max_delta, current_q + max_delta)
 
@@ -88,7 +99,7 @@ class RealLandingController:
         self.fsm_controller.cur_policy.enter()
         self.fsm_controller.FSMmode = FSMMode.NORMAL
         self.start_time = time.time()
-        if target_state == FSMStateName.SKILL_TRACK_MOTION_MJLAB:
+        if is_landing_policy(target_state):
             self.landing_generator.reset()
         print("Switched to", self.fsm_controller.cur_policy.name_str)
 
@@ -137,7 +148,7 @@ class RealLandingController:
         return ball_obs
 
     def update_landing_command(self):
-        if self.fsm_controller.cur_policy.name != FSMStateName.SKILL_TRACK_MOTION_MJLAB:
+        if not is_landing_policy(self.fsm_controller.cur_policy.name):
             self.state_cmd.base_pos_target = None
             self.state_cmd.rel_racket_target_pos_w = None
             self.state_cmd.racket_target_vel_w = None
@@ -239,14 +250,14 @@ class RealLandingController:
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Deploy landing planner + track-motion policy on the real robot.")
-    parser.add_argument("--policy", default="track_motion_mjlab", choices=get_policy_choices(include_base=False))
+    parser.add_argument("--policy", default=LANDING_POLICY_DEFAULT, choices=get_policy_choices(include_base=False))
     parser.add_argument("--planner-config", default="deploy_mujoco/config/landing_planner.yaml")
     parser.add_argument("--ball-source", choices=["constant", "udp"], default="constant")
     parser.add_argument("--udp-host", default="0.0.0.0")
     parser.add_argument("--udp-port", type=int, default=15050)
     parser.add_argument("--ball-pos", type=float, nargs=3, default=[3.5, -0.2, 1.0])
     parser.add_argument("--ball-vel", type=float, nargs=3, default=[-4.0, 0.0, 0.0])
-    parser.add_argument("--base-height", type=float, default=0.76)
+    parser.add_argument("--base-height", type=float, default=0.793)
     parser.add_argument("--max-delta", type=float, default=0.12)
     parser.add_argument("--ramp-time", type=float, default=2.0)
     parser.add_argument("--dry-run", action="store_true")

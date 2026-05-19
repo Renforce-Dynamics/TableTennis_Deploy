@@ -45,3 +45,4 @@ class PlannerConfig:
   fit_window: int = 31          # 多项式拟合窗口大小 (样本数)
   poly_order: int = 2           # 多项式阶数
   bounce_z_tol: float = 0.02    # 弹跳检测 Z 容差 (m)
+  max_table_bounces: int = 8    # 击球前最多考虑的台面反弹次数

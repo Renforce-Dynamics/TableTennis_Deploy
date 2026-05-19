@@ -12,6 +12,7 @@ planner:
   fit_window: 31
   poly_order: 2
   bounce_z_tol: 0.02
+  max_table_bounces: 8
 
 table:
   x_min: 0.63
@@ -23,18 +24,26 @@ table:
   net_height: 0.1525
   net_overhang: 0.15
   ball_radius: 0.02
-  restitution_h: 0.75
-  restitution_v: 0.85
+  # Effective bounce factors matched to the current MuJoCo table contact.
+  restitution_h: 0.905
+  restitution_v: 0.88
 
 landing_target:
   pos_x: 2.68
   pos_y: 0.0
 
 command:
-  activate_before_hit_s: 1.50
-  min_time_to_hit_s: 0.03
+  # TrackMotionMovableBase was trained with hit_time_step=42 and control_dt=0.02.
+  # Only inject the hit command once the ball is inside that policy horizon.
+  activate_before_hit_s: 0.84
+  min_time_to_hit_s: 0.0
   max_time_to_hit_s: 2.0
-  command_hold_s: 0.10
+  command_hold_s: 0.04
+  post_hit_x_margin: 0.0
+  incoming_vx_threshold: -0.05
+  inactive_time_s: 0.84
+  inactive_rel_racket_target_pos_w: [0.40, -0.10, 0.25]
+  inactive_racket_target_vel_w: [0.0, 0.0, 0.0]
 
   forehand_y_range: [-0.60, -0.30]
   backhand_y_range: [-0.10, 0.30]
@@ -54,4 +63,3 @@ command:
   pos_blend_alpha: 0.45
   vel_blend_alpha: 0.35
   base_blend_alpha: 0.35
-  time_blend_alpha: 0.35
