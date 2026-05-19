@@ -1,0 +1,57 @@
+planner:
+  # model_based uses ball_pos + ball_vel directly and is the first sim2sim target.
+  # hope uses a position-history estimator and is better for vision-driven sim2real later.
+  type: model_based
+  x_hit: 0.40
+  dt_integrate: 0.001
+  max_predict_time: 2.0
+  delta_t_flight: 0.50
+  racket_restitution: 0.88
+  drag_k: 0.0
+  gravity_z: -9.81
+  fit_window: 31
+  poly_order: 2
+  bounce_z_tol: 0.02
+
+table:
+  x_min: 0.63
+  x_max: 3.37
+  y_min: -0.7625
+  y_max: 0.7625
+  z_surface: 0.755
+  net_x: 2.0
+  net_height: 0.1525
+  net_overhang: 0.15
+  ball_radius: 0.02
+  restitution_h: 0.75
+  restitution_v: 0.85
+
+landing_target:
+  pos_x: 2.68
+  pos_y: 0.0
+
+command:
+  activate_before_hit_s: 1.50
+  min_time_to_hit_s: 0.03
+  max_time_to_hit_s: 2.0
+  command_hold_s: 0.10
+
+  forehand_y_range: [-0.60, -0.30]
+  backhand_y_range: [-0.10, 0.30]
+  forehand_pos_offset: [0.02, -0.01, 0.0]
+  backhand_pos_offset: [0.02, 0.01, 0.0]
+
+  base_target_x: 0.0
+  base_target_y_min: -1.2
+  base_target_y_max: 1.2
+  base_target_max_delta: 0.06
+
+  racket_pos_min: [0.15, -0.80, -0.10]
+  racket_pos_max: [0.70, 0.55, 0.65]
+  racket_speed_min: 0.0
+  racket_speed_max: 3.0
+
+  pos_blend_alpha: 0.45
+  vel_blend_alpha: 0.35
+  base_blend_alpha: 0.35
+  time_blend_alpha: 0.35

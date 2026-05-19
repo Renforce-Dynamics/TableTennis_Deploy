@@ -34,41 +34,22 @@ class TrackMotionMjlab(FSMState):
             "right_wrist_yaw_joint",
         ]
 
-        # RL training joint order (Isaac Gym / track_motion_mjlab)
-        
-        #下面的是isaaclab
-        self.train_joint_names = [
-            "left_hip_pitch_joint", "right_hip_pitch_joint", "waist_yaw_joint", "left_hip_roll_joint",
-            "right_hip_roll_joint", "waist_roll_joint", "left_hip_yaw_joint", "right_hip_yaw_joint",
-            "waist_pitch_joint", "left_knee_joint", "right_knee_joint", "left_shoulder_pitch_joint",
-            "right_shoulder_pitch_joint", "left_ankle_pitch_joint", "right_ankle_pitch_joint",
-            "left_shoulder_roll_joint", "right_shoulder_roll_joint", "left_ankle_roll_joint",
-            "right_ankle_roll_joint", "left_shoulder_yaw_joint", "right_shoulder_yaw_joint",
-            "left_elbow_joint", "right_elbow_joint", "left_wrist_roll_joint", "right_wrist_roll_joint",
-            "left_wrist_pitch_joint", "right_wrist_pitch_joint", "left_wrist_yaw_joint", "right_wrist_yaw_joint",
-        ]
-        # #下面的是mjlab
-        # self.train_joint_names = [
-        #     "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint",
-        #     "left_ankle_pitch_joint", "left_ankle_roll_joint", "right_hip_pitch_joint", "right_hip_roll_joint",
-        #     "right_hip_yaw_joint", "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
-        #     "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint", "left_shoulder_pitch_joint",
-        #     "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint", "left_wrist_roll_joint",
-        #     "left_wrist_pitch_joint", "left_wrist_yaw_joint", "right_shoulder_pitch_joint", "right_shoulder_roll_joint",
-        #     "right_shoulder_yaw_joint", "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint",
-        #     "right_wrist_yaw_joint",
-        # ]
-
-        self.mj_to_train = np.array(
-            [self.mj_joint_names.index(name) for name in self.train_joint_names], dtype=np.int32
-        )
-        self.train_to_mj = np.array(
-            [self.train_joint_names.index(name) for name in self.mj_joint_names], dtype=np.int32
-        )
-
         current_dir = os.path.dirname(os.path.abspath(__file__))
         config_path = os.path.join(current_dir, "config", "TrackMotionMjlab.yaml")
         config = self._load_config(config_path)
+
+        # Training / policy joint order.
+        # The uploaded training XML traverses joints in MuJoCo/MJLab order, which is
+        # also the runtime actuator order used by g1_train_racket.xml.  Do not use
+        # the IsaacLab interleaved order unless the exported ONNX was explicitly
+        # trained/exported that way.
+        self.joint_order = str(config.get("joint_order", "mjlab")).lower()
+        self.prefer_onnx_metadata_joint_names = bool(
+            config.get("prefer_onnx_metadata_joint_names", False)
+        )
+        self.train_joint_names = self._resolve_train_joint_names(config)
+        self._rebuild_joint_maps()
+        self._validate_joint_maps()
 
         self.onnx_path = self._resolve_path(current_dir, config.get("onnx_path", "model/policy.onnx"))
         self.onnx_data_path = self.onnx_path + ".data"
@@ -85,7 +66,7 @@ class TrackMotionMjlab(FSMState):
         self.dof_vel_scale = float(config.get("dof_vel_scale", 1.0))
         self.use_external_data = bool(config.get("use_external_data", True))
         self.obs_clip = float(config.get("obs_clip", 100.0))
-        self.action_clip = float(config.get("action_clip", 5.0))
+        self.action_clip = float(config.get("action_clip", config.get("clip_actions", 5.0)))
 
         # track_motion_mjlab command defaults
         self.base_target_pos = np.array(config.get("base_target_pos", [0.0, 0.0]), dtype=np.float32)
@@ -179,7 +160,7 @@ class TrackMotionMjlab(FSMState):
         try:
             self._load_policy()
             self.policy_available = True
-            print("TrackMotionMjlab policy initializing ...")
+            print(f"TrackMotionMjlab policy initializing ... joint_order={self.joint_order}")
         except Exception as exc:
             self.init_error = str(exc)
             print(f"TrackMotionMjlab policy unavailable: {self.init_error}")
@@ -198,6 +179,63 @@ class TrackMotionMjlab(FSMState):
         if os.path.exists(candidate):
             return candidate
         return os.path.join(PROJECT_ROOT, path_value)
+
+    def _isaaclab_joint_names(self):
+        return [
+            "left_hip_pitch_joint", "right_hip_pitch_joint", "waist_yaw_joint",
+            "left_hip_roll_joint", "right_hip_roll_joint", "waist_roll_joint",
+            "left_hip_yaw_joint", "right_hip_yaw_joint", "waist_pitch_joint",
+            "left_knee_joint", "right_knee_joint", "left_shoulder_pitch_joint",
+            "right_shoulder_pitch_joint", "left_ankle_pitch_joint",
+            "right_ankle_pitch_joint", "left_shoulder_roll_joint",
+            "right_shoulder_roll_joint", "left_ankle_roll_joint",
+            "right_ankle_roll_joint", "left_shoulder_yaw_joint",
+            "right_shoulder_yaw_joint", "left_elbow_joint", "right_elbow_joint",
+            "left_wrist_roll_joint", "right_wrist_roll_joint",
+            "left_wrist_pitch_joint", "right_wrist_pitch_joint",
+            "left_wrist_yaw_joint", "right_wrist_yaw_joint",
+        ]
+
+    def _resolve_train_joint_names(self, config):
+        if "train_joint_names" in config and config["train_joint_names"]:
+            names = [str(name) for name in config["train_joint_names"]]
+            return names
+
+        if self.joint_order in ("mjlab", "mujoco", "xml", "runtime"):
+            return list(self.mj_joint_names)
+        if self.joint_order in ("isaaclab", "isaac", "g1-main", "g1_main"):
+            return self._isaaclab_joint_names()
+        raise ValueError(
+            "TrackMotionMjlab joint_order must be one of "
+            "mjlab/mujoco/xml/runtime or isaaclab/isaac/g1-main; "
+            f"got {self.joint_order!r}"
+        )
+
+    def _rebuild_joint_maps(self):
+        self.mj_to_train = np.array(
+            [self.mj_joint_names.index(name) for name in self.train_joint_names],
+            dtype=np.int32,
+        )
+        self.train_to_mj = np.array(
+            [self.train_joint_names.index(name) for name in self.mj_joint_names],
+            dtype=np.int32,
+        )
+
+    def _validate_joint_maps(self):
+        if len(self.train_joint_names) != len(self.mj_joint_names):
+            raise ValueError(
+                "TrackMotionMjlab train_joint_names length mismatch: "
+                f"{len(self.train_joint_names)} != {len(self.mj_joint_names)}"
+            )
+        missing = sorted(set(self.train_joint_names) - set(self.mj_joint_names))
+        extra = sorted(set(self.mj_joint_names) - set(self.train_joint_names))
+        if missing or extra:
+            raise ValueError(
+                "TrackMotionMjlab joint-name set mismatch: "
+                f"missing_from_runtime={missing}, missing_from_train={extra}"
+            )
+        if len(set(self.train_joint_names)) != len(self.train_joint_names):
+            raise ValueError("TrackMotionMjlab train_joint_names contains duplicates.")
 
     def _array_from_config(self, config, key: str, length: int, default_val: float = 0.0) -> np.ndarray:
         if key not in config:
@@ -307,14 +345,15 @@ class TrackMotionMjlab(FSMState):
             return
 
         joint_names = self._parse_csv_metadata(metadata, "joint_names", str)
-        if joint_names and len(joint_names) == self.num_actions:
+        if (
+            self.prefer_onnx_metadata_joint_names
+            and joint_names
+            and len(joint_names) == self.num_actions
+        ):
             self.train_joint_names = joint_names
-            self.mj_to_train = np.array(
-                [self.mj_joint_names.index(name) for name in self.train_joint_names], dtype=np.int32
-            )
-            self.train_to_mj = np.array(
-                [self.train_joint_names.index(name) for name in self.mj_joint_names], dtype=np.int32
-            )
+            self.joint_order = "onnx_metadata"
+            self._rebuild_joint_maps()
+            self._validate_joint_maps()
 
         if np.allclose(self.default_angles, 0.0):
             meta_val = self._parse_csv_metadata(metadata, "default_joint_pos", float)
@@ -501,9 +540,10 @@ class TrackMotionMjlab(FSMState):
 
     def run(self):
         if not self.policy_available:
-            self.policy_output.actions = self.default_angles.astype(np.float32)
-            self.policy_output.kps = self.kps.copy()
-            self.policy_output.kds = self.kds.copy()
+            self.policy_output.actions = self.default_angles[self.train_to_mj].astype(np.float32)
+            self.policy_output.kps = self.kps[self.train_to_mj].astype(np.float32)
+            self.policy_output.kds = self.kds[self.train_to_mj].astype(np.float32)
+            self.policy_output.tau_limit = self.tau_limit[self.train_to_mj].astype(np.float32)
             return
 
         self.obs = self._build_obs()
@@ -527,10 +567,12 @@ class TrackMotionMjlab(FSMState):
         target_dof_pos = target_dof_pos_train[self.train_to_mj]
         kps = self.kps[self.train_to_mj]
         kds = self.kds[self.train_to_mj]
+        tau_limit = self.tau_limit[self.train_to_mj]
 
         self.policy_output.actions = target_dof_pos.astype(np.float32)
         self.policy_output.kps = kps.astype(np.float32)
         self.policy_output.kds = kds.astype(np.float32)
+        self.policy_output.tau_limit = tau_limit.astype(np.float32)
 
         self.counter_step += 1
         self.policy_step += 1
