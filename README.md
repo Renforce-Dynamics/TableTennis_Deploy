@@ -26,6 +26,24 @@ The `unitree-sdk2py` source is configured in `pyproject.toml` as `../unitree_sdk
 
 ## Mujoco
 
+### Track Motion Landing (Current Recommended Path)
+
+The current table-tennis landing work after PR #1 is documented in
+[`README_TRACK_MOTION_LANDING.md`](README_TRACK_MOTION_LANDING.md).
+
+Recommended MuJoCo command:
+
+```bash
+uv run python deploy_mujoco/deploy_mujoco_landing.py \
+  --start-policy track_motion_movable_base \
+  --fixed-initial-ball \
+  --ball-pos 3.5 -0.2 1.0 \
+  --ball-vel -4.0 0.0 0.0 \
+  --debug-every 1
+```
+
+This path reuses the verified `track_motion_movable_base` inference stack and injects planner-generated `base_pos_target`, `rel_racket_target_pos_w`, `racket_target_vel_w`, and `racket_target_time` commands. In MuJoCo, the default planner source rolls out the current MuJoCo scene to keep the hit point synchronized with the XML/contact model.
+
 ### Table Tennis Without Joystick
 
 Use `deploy_mujoco_no_joystick.py` to test the three table-tennis policies.
