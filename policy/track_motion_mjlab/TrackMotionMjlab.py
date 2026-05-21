@@ -37,27 +37,27 @@ class TrackMotionMjlab(FSMState):
         # RL training joint order (Isaac Gym / track_motion_mjlab)
         
         #下面的是isaaclab
-        self.train_joint_names = [
-            "left_hip_pitch_joint", "right_hip_pitch_joint", "waist_yaw_joint", "left_hip_roll_joint",
-            "right_hip_roll_joint", "waist_roll_joint", "left_hip_yaw_joint", "right_hip_yaw_joint",
-            "waist_pitch_joint", "left_knee_joint", "right_knee_joint", "left_shoulder_pitch_joint",
-            "right_shoulder_pitch_joint", "left_ankle_pitch_joint", "right_ankle_pitch_joint",
-            "left_shoulder_roll_joint", "right_shoulder_roll_joint", "left_ankle_roll_joint",
-            "right_ankle_roll_joint", "left_shoulder_yaw_joint", "right_shoulder_yaw_joint",
-            "left_elbow_joint", "right_elbow_joint", "left_wrist_roll_joint", "right_wrist_roll_joint",
-            "left_wrist_pitch_joint", "right_wrist_pitch_joint", "left_wrist_yaw_joint", "right_wrist_yaw_joint",
-        ]
-        # #下面的是mjlab
         # self.train_joint_names = [
-        #     "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint",
-        #     "left_ankle_pitch_joint", "left_ankle_roll_joint", "right_hip_pitch_joint", "right_hip_roll_joint",
-        #     "right_hip_yaw_joint", "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
-        #     "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint", "left_shoulder_pitch_joint",
-        #     "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint", "left_wrist_roll_joint",
-        #     "left_wrist_pitch_joint", "left_wrist_yaw_joint", "right_shoulder_pitch_joint", "right_shoulder_roll_joint",
-        #     "right_shoulder_yaw_joint", "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint",
-        #     "right_wrist_yaw_joint",
+        #     "left_hip_pitch_joint", "right_hip_pitch_joint", "waist_yaw_joint", "left_hip_roll_joint",
+        #     "right_hip_roll_joint", "waist_roll_joint", "left_hip_yaw_joint", "right_hip_yaw_joint",
+        #     "waist_pitch_joint", "left_knee_joint", "right_knee_joint", "left_shoulder_pitch_joint",
+        #     "right_shoulder_pitch_joint", "left_ankle_pitch_joint", "right_ankle_pitch_joint",
+        #     "left_shoulder_roll_joint", "right_shoulder_roll_joint", "left_ankle_roll_joint",
+        #     "right_ankle_roll_joint", "left_shoulder_yaw_joint", "right_shoulder_yaw_joint",
+        #     "left_elbow_joint", "right_elbow_joint", "left_wrist_roll_joint", "right_wrist_roll_joint",
+        #     "left_wrist_pitch_joint", "right_wrist_pitch_joint", "left_wrist_yaw_joint", "right_wrist_yaw_joint",
         # ]
+        #下面的是mjlab
+        self.train_joint_names = [
+            "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint",
+            "left_ankle_pitch_joint", "left_ankle_roll_joint", "right_hip_pitch_joint", "right_hip_roll_joint",
+            "right_hip_yaw_joint", "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
+            "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint", "left_shoulder_pitch_joint",
+            "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint", "left_wrist_roll_joint",
+            "left_wrist_pitch_joint", "left_wrist_yaw_joint", "right_shoulder_pitch_joint", "right_shoulder_roll_joint",
+            "right_shoulder_yaw_joint", "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint",
+            "right_wrist_yaw_joint",
+        ]
 
         self.mj_to_train = np.array(
             [self.mj_joint_names.index(name) for name in self.train_joint_names], dtype=np.int32
@@ -85,7 +85,7 @@ class TrackMotionMjlab(FSMState):
         self.dof_vel_scale = float(config.get("dof_vel_scale", 1.0))
         self.use_external_data = bool(config.get("use_external_data", True))
         self.obs_clip = float(config.get("obs_clip", 100.0))
-        self.action_clip = float(config.get("action_clip", config.get("clip_actions", 5.0)))
+        self.action_clip = float(config.get("action_clip", 5.0))
 
         # track_motion_mjlab command defaults
         self.base_target_pos = np.array(config.get("base_target_pos", [0.0, 0.0]), dtype=np.float32)
@@ -501,10 +501,9 @@ class TrackMotionMjlab(FSMState):
 
     def run(self):
         if not self.policy_available:
-            self.policy_output.actions = self.default_angles[self.train_to_mj].astype(np.float32)
-            self.policy_output.kps = self.kps[self.train_to_mj].astype(np.float32)
-            self.policy_output.kds = self.kds[self.train_to_mj].astype(np.float32)
-            self.policy_output.tau_limit = self.tau_limit[self.train_to_mj].astype(np.float32)
+            self.policy_output.actions = self.default_angles.astype(np.float32)
+            self.policy_output.kps = self.kps.copy()
+            self.policy_output.kds = self.kds.copy()
             return
 
         self.obs = self._build_obs()
@@ -528,12 +527,10 @@ class TrackMotionMjlab(FSMState):
         target_dof_pos = target_dof_pos_train[self.train_to_mj]
         kps = self.kps[self.train_to_mj]
         kds = self.kds[self.train_to_mj]
-        tau_limit = self.tau_limit[self.train_to_mj]
 
         self.policy_output.actions = target_dof_pos.astype(np.float32)
         self.policy_output.kps = kps.astype(np.float32)
         self.policy_output.kds = kds.astype(np.float32)
-        self.policy_output.tau_limit = tau_limit.astype(np.float32)
 
         self.counter_step += 1
         self.policy_step += 1

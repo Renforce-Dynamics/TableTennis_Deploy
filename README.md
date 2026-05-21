@@ -24,6 +24,76 @@ uv sync --group real
 
 The `unitree-sdk2py` source is configured in `pyproject.toml` as `../unitree_sdk2_python`.
 
+## Important: `deploy_mujoco_track_motion_movable_base.py`
+
+If you are working on the current table-tennis / landing pipeline, this is the
+main MuJoCo entry script to use:
+
+```bash
+python3 deploy_mujoco/deploy_mujoco_track_motion_movable_base.py \
+  --start-policy track_motion_movable_base
+```
+
+It supports choosing the initial FSM state through `--start-policy`, for
+example:
+
+```bash
+python3 deploy_mujoco/deploy_mujoco_track_motion_movable_base.py --start-policy passive
+python3 deploy_mujoco/deploy_mujoco_track_motion_movable_base.py --start-policy loco
+python3 deploy_mujoco/deploy_mujoco_track_motion_movable_base.py --start-policy track_motion_movable_base
+python3 deploy_mujoco/deploy_mujoco_track_motion_movable_base.py --start-policy landing_assist_finetune
+```
+
+### How startup and switching work
+
+There are two common ways to use this script:
+
+1. Start directly in the target policy with `--start-policy ...`
+2. Start from `passive` or `loco`, then switch at runtime
+
+Recommended runtime flow when you want manual control over which landing policy
+to enter:
+
+```text
+1. Start with --start-policy passive   or --start-policy loco
+2. If needed, press L to enter loco
+3. Press a number key to choose the target policy
+4. Press T to enter the currently selected policy from loco
+5. Press P at any time to return to passive
+```
+
+Current number-key mapping inside the MuJoCo window:
+
+| Key | Selected policy |
+| --- | --- |
+| `1` | `table_tennis` |
+| `2` | `table_tennis_distill` |
+| `3` | `table_tennis_rev_racket` |
+| `4` | `track_motion_movable_base` |
+| `5` | `track_motion_mjlab` |
+| `6` | `landing_assist_finetune` |
+
+Current control keys:
+
+| Key | Action |
+| --- | --- |
+| `L` | Switch to `loco` |
+| `T` | Enter the currently selected table / landing policy from `loco` |
+| `P` | Switch to `passive` |
+| `R` | Reset the simulation |
+
+Important behavior details:
+
+- If you launch with `--start-policy track_motion_movable_base` or
+  `--start-policy landing_assist_finetune`, the simulation starts directly in
+  that policy.
+- If you launch with `--start-policy passive`, you must first switch to
+  `loco` before using `T` to enter a table / landing policy.
+- If you are already inside a table / landing policy, the number keys only
+  change the current selection; they do not force an immediate unsafe switch.
+- Click the MuJoCo window once before using keyboard shortcuts, otherwise the
+  viewer may not receive the key events.
+
 ## Mujoco
 
 ### Track Motion Landing (Current Recommended Path)
@@ -154,6 +224,7 @@ Supported policy names are generated from `common/policy_registry.py`. The merge
 - `track_motion_isaaclab`
 - `track_motion_mjlab`
 - `track_motion_movable_base`
+- `landing_assist_finetune`
 
 ## Architecture
 

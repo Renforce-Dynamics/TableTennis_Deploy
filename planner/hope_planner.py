@@ -17,7 +17,7 @@ Pipeline:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -314,9 +314,11 @@ class BallTrajectoryPredictor:
 
 @dataclass
 class RacketCommand:
-  """第 3 阶段的输出：击球时的期望球拍状态。
+  """第 3 阶段的输出：击球时的期望球拍状态 + 正反手/base 目标。
 
   这是规划器输出给全身控制器的指令。
+  对应论文中 planner 的完整输出:
+    p̂_base, p̂_racket, v̂_racket, t_strike, stroke_type
   """
 
   p_intercept: np.ndarray  # 拦截时球拍中心的期望位置 (等于预测的击球点位置)
@@ -328,6 +330,9 @@ class RacketCommand:
   clears_net: bool  # 如果回球轨迹能过网则为 True
   bypasses_net_posts: bool  # 如果球从网架 Y 轴范围外绕过则为 True
   valid: bool  # 如果所有计算均成功则为 True
+  is_forehand: bool = True  # 是否为正手击球
+  p_base_target: np.ndarray = field(default_factory=lambda: np.zeros(2, dtype=np.float64))  # 目标 base XY (世界坐标)
+  stroke_confident: bool = True  # 击球点是否明确落在正手或反手区间内
 
 
 class RacketTargetPlanner:
@@ -515,7 +520,7 @@ class RacketTargetPlanner:
 
 
 class HOPEPlanner:
-  """组合阶段 1-3 的顶层规划器。
+  """组合阶段 1-3 + 正反手/base 目标的顶层规划器。
 
   按照仿真帧率使用每个球位置调用 .update()。
   通过 .racket_command 检索最新期望球拍状态。
@@ -524,9 +529,16 @@ class HOPEPlanner:
 
       planner = HOPEPlanner(physics, config, table)
       for each sim step:
-          cmd = planner.update(episode_time, ball_pos_w)
+          cmd = planner.update(
+              episode_time,
+              ball_pos_w,
+              target_land_xy=...,
+              p_base=robot_base_pos,
+              base_quat=robot_base_quat,
+          )
           if cmd is not None and cmd.valid:
-              ...  # 使用 cmd.p_intercept, cmd.v_racket, cmd.t_strike 等
+              ...  # 使用 cmd.p_intercept, cmd.v_racket, cmd.t_strike,
+                   # cmd.is_forehand, cmd.p_base_target 等
   """
 
   def __init__(
@@ -570,11 +582,81 @@ class HOPEPlanner:
     self._latest_command = None
     self._latest_strike = None
 
+  @staticmethod
+  def _yaw_from_quat(quat: np.ndarray) -> float:
+    """从四元数 [w, x, y, z] 提取 yaw 角 (绕 Z 轴旋转)."""
+    w, x, y, z = float(quat[0]), float(quat[1]), float(quat[2]), float(quat[3])
+    return float(np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)))
+
+  def _world_to_local_y(
+    self,
+    p_world: np.ndarray,
+    p_base: np.ndarray,
+    base_yaw: float,
+  ) -> float:
+    """将世界坐标点转换到机器人局部坐标系的 Y 分量."""
+    dx = float(p_world[0] - p_base[0])
+    dy = float(p_world[1] - p_base[1])
+    return float(-np.sin(base_yaw) * dx + np.cos(base_yaw) * dy)
+
+  def _choose_stroke(self, local_y: float) -> tuple[bool, bool]:
+    """根据击球点在机器人局部 Y 坐标选择正手/反手."""
+    fh_min = float(self.config.fh_rel_y_min)
+    fh_max = float(self.config.fh_rel_y_max)
+    bh_min = float(self.config.bh_rel_y_min)
+    bh_max = float(self.config.bh_rel_y_max)
+
+    in_fh = fh_min <= local_y <= fh_max
+    in_bh = bh_min <= local_y <= bh_max
+    gap_prefers_bh = fh_max < local_y < bh_min
+
+    if local_y < fh_min:
+      return True, True
+    if in_fh:
+      return True, True
+    if gap_prefers_bh:
+      return False, True
+    if in_bh:
+      return False, True
+    return False, True
+
+  def _compute_base_target(
+    self,
+    p_base_xy: np.ndarray,
+    base_yaw: float,
+    p_racket_xy: np.ndarray,
+    is_forehand: bool,
+  ) -> np.ndarray:
+    """计算目标 base XY 使预测击球点落入选定击球方式的可达区域."""
+    local_y = self._world_to_local_y(p_racket_xy, p_base_xy, base_yaw)
+
+    if is_forehand:
+      y_min = float(self.config.fh_rel_y_min)
+      y_max = float(self.config.fh_rel_y_max)
+    else:
+      y_min = float(self.config.bh_rel_y_min)
+      y_max = float(self.config.bh_rel_y_max)
+
+    clamped_y = float(np.clip(local_y, y_min, y_max))
+    excess = local_y - clamped_y
+    if abs(excess) < 1.0e-6:
+      return p_base_xy.copy()
+
+    gain = float(self.config.base_out_of_range_gain)
+    delta_x = float(-np.sin(base_yaw) * excess * gain)
+    delta_y = float(np.cos(base_yaw) * excess * gain)
+    return np.array(
+      [float(p_base_xy[0]) + delta_x, float(p_base_xy[1]) + delta_y],
+      dtype=np.float64,
+    )
+
   def update(
     self,
     t: float,
     p_ball: np.ndarray,
     target_land_xy: np.ndarray | None = None,
+    p_base: np.ndarray | None = None,
+    base_quat: np.ndarray | None = None,
   ) -> RacketCommand | None:
     """处理新的球位置测量值。
 
@@ -582,6 +664,8 @@ class HOPEPlanner:
       t: 当前 episode 绝对时间 (秒)
       p_ball: 球位置 [x, y, z] (世界坐标)
       target_land_xy: 目标落点 XY [2] (局部坐标), 为 None 则使用上次的值
+      p_base: 机器人 base 位置 [x, y, z] (世界坐标), 用于正反手/base 计算
+      base_quat: 机器人 base 四元数 [w, x, y, z], 用于正反手/base 计算
 
     Returns:
       RacketCommand 或 None (缓冲区未就绪或球未向击球平面移动)
@@ -605,6 +689,20 @@ class HOPEPlanner:
     self._latest_strike = strike
 
     command = self.target_planner.plan(strike, self._target_land_xy)
+    if command.valid and p_base is not None and base_quat is not None:
+      p_base_arr = np.asarray(p_base, dtype=np.float64)
+      base_quat_arr = np.asarray(base_quat, dtype=np.float64)
+      base_yaw = self._yaw_from_quat(base_quat_arr)
+      local_y = self._world_to_local_y(command.p_intercept, p_base_arr, base_yaw)
+      is_forehand, confident = self._choose_stroke(local_y)
+      command.is_forehand = is_forehand
+      command.stroke_confident = confident
+      command.p_base_target = self._compute_base_target(
+        p_base_arr[:2].copy(),
+        base_yaw,
+        command.p_intercept[:2].copy(),
+        is_forehand,
+      )
     self._latest_command = command
     return command
 

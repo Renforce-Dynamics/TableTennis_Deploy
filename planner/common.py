@@ -46,3 +46,8 @@ class PlannerConfig:
   poly_order: int = 2           # 多项式阶数
   bounce_z_tol: float = 0.02    # 弹跳检测 Z 容差 (m)
   max_table_bounces: int = 8    # 击球前最多考虑的台面反弹次数
+  fh_rel_y_min: float = -0.6    # 正手可达区域最小相对 Y
+  fh_rel_y_max: float = -0.35   # 正手可达区域最大相对 Y
+  bh_rel_y_min: float = 0.0    # 反手可达区域最小相对 Y
+  bh_rel_y_max: float = 0.3     # 反手可达区域最大相对 Y
+  base_out_of_range_gain: float = 1.0  # 击球点越界时的 base 侧移增益

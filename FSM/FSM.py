@@ -55,7 +55,7 @@ class FSM:
         for spec in EXTRA_POLICY_SPECS:
             try:
                 policy_cls = load_extra_policy_class(spec)
-                policy = policy_cls(state_cmd, policy_output)
+                policy = policy_cls(state_cmd, policy_output, **spec.init_kwargs)
             except Exception as exc:
                 print(f"extra policy {spec.key} unavailable: {exc}")
                 continue

@@ -1,6 +1,7 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib import import_module
 
+from common.path_config import PROJECT_ROOT
 from common.utils import FSMStateName
 
 
@@ -10,6 +11,7 @@ class ExtraPolicySpec:
     state: object
     class_path: str
     attr_name: str
+    init_kwargs: dict = field(default_factory=dict)
 
 
 BASE_POLICY_STATES = {
@@ -60,6 +62,17 @@ EXTRA_POLICY_SPECS = (
         FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE,
         "policy.track_motion_movable_base.TrackMotionMovableBase",
         "TrackMotionMovableBase",
+    ),
+    ExtraPolicySpec(
+        "landing_assist_finetune",
+        FSMStateName.SKILL_LANDING_ASSIST_FINETUNE,
+        "policy.track_motion_movable_base.TrackMotionMovableBase",
+        "TrackMotionMovableBase",
+        init_kwargs={
+            "state_name": FSMStateName.SKILL_LANDING_ASSIST_FINETUNE,
+            "state_name_str": "skill_landing_assist_finetune",
+            "config_path": f"{PROJECT_ROOT}/policy/landing_assist_finetune/config/LandingAssistFinetune.yaml",
+        },
     ),
 )
 
