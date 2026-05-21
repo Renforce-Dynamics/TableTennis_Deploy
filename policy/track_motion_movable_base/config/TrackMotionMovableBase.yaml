@@ -12,7 +12,7 @@ history_length: 1
 motion_length: 3.0
 
 # Observation / action scaling
-clip_actions: 1.0
+action_clip: 5.0
 use_external_data: false
 
 # Track-motion command defaults (used if not provided by state_cmd)
@@ -110,13 +110,13 @@ kds:
 tau_limit:
   [
     88,
-    88,
+    139,
     88,
     139,
     50,
     50,
     88,
-    88,
+    139,
     88,
     139,
     50,
@@ -128,14 +128,14 @@ tau_limit:
     25,
     25,
     25,
-    5,
+    25,
     5,
     5,
     25,
     25,
     25,
     25,
-    5,
+    25,
     5,
     5,
   ]

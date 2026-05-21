@@ -301,8 +301,8 @@
                             <geom name="racket_black_rubber" type="cylinder" group="2" contype="0" conaffinity="0" 
                                   euler="1.5708 0 0" size="0.074 0.001" pos="0 0.0045 0" rgba="0.15 0.15 0.15 1"/>
 
-                            <geom name="right_racket_collision" type="cylinder" class="collision"
-                              euler="1.5708 0 0" size="0.075 0.01"
+                            <geom name="right_hand_collision" type="cylinder" class="collision"
+                              euler="1.5708 0 0" size="0.075 0.05"
                               condim="6" priority="3"
                               friction="0.08 0.002 0.0001" solref="0.02 1"
                               solimp="0.9 0.95 0.001" rgba=".2 .6 .2 .2"/>

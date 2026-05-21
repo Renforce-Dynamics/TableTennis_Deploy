@@ -30,10 +30,58 @@ LANDING_POLICY_STATES = (
     FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE,
     FSMStateName.SKILL_TRACK_MOTION_MJLAB,
 )
+PLANNER_HIT_MARKER_RADIUS = 0.035
+PLANNER_DIRECTION_ARROW_LEN = 0.35
+PLANNER_VELOCITY_ARROW_LEN = 0.25
+ROBOT_JOINT_NAMES = (
+    "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint",
+    "left_ankle_pitch_joint", "left_ankle_roll_joint", "right_hip_pitch_joint", "right_hip_roll_joint",
+    "right_hip_yaw_joint", "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
+    "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint", "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint", "left_wrist_roll_joint",
+    "left_wrist_pitch_joint", "left_wrist_yaw_joint", "right_shoulder_pitch_joint", "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint", "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint",
+    "right_wrist_yaw_joint",
+)
 
 
 def is_landing_policy(policy_state):
     return policy_state in LANDING_POLICY_STATES
+
+
+def get_mjlab_joint_armature(joint_name):
+    if joint_name.endswith("_hip_roll_joint") or joint_name.endswith("_knee_joint"):
+        return 0.025101924999999997
+    if (
+        joint_name.endswith("_hip_pitch_joint")
+        or joint_name.endswith("_hip_yaw_joint")
+        or joint_name == "waist_yaw_joint"
+    ):
+        return 0.01017752004132231
+    if (
+        joint_name.endswith("_ankle_pitch_joint")
+        or joint_name.endswith("_ankle_roll_joint")
+        or joint_name in ("waist_pitch_joint", "waist_roll_joint")
+    ):
+        return 0.00721945
+    if joint_name.endswith("_wrist_pitch_joint") or joint_name.endswith("_wrist_yaw_joint"):
+        return 0.00425
+    return 0.003609725
+
+
+def apply_mjlab_joint_dynamics(model):
+    """Match MJLab's robot articulation armature/friction settings."""
+    changed = 0
+    for joint_name in ROBOT_JOINT_NAMES:
+        joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+        if joint_id == -1:
+            continue
+        dof_id = model.jnt_dofadr[joint_id]
+        model.dof_armature[dof_id] = get_mjlab_joint_armature(joint_name)
+        model.dof_frictionloss[dof_id] = 0.0
+        model.dof_damping[dof_id] = 0.0
+        changed += 1
+    return changed
 
 
 def pd_control(target_q, q, kp, target_dq, dq, kd):
@@ -279,6 +327,71 @@ def has_racket_ball_contact(model, data):
     return False
 
 
+def add_visual_sphere(scene, pos, radius, rgba):
+    if scene.ngeom >= scene.maxgeom:
+        return
+    geom = scene.geoms[scene.ngeom]
+    mujoco.mjv_initGeom(
+        geom,
+        mujoco.mjtGeom.mjGEOM_SPHERE,
+        np.array([radius, 0.0, 0.0], dtype=np.float64),
+        np.asarray(pos, dtype=np.float64),
+        np.eye(3, dtype=np.float64).reshape(-1),
+        np.asarray(rgba, dtype=np.float32),
+    )
+    scene.ngeom += 1
+
+
+def add_visual_arrow(scene, start, direction, length, width, rgba):
+    direction = np.asarray(direction, dtype=np.float64).reshape(3)
+    norm = float(np.linalg.norm(direction))
+    if norm < 1.0e-8 or not np.all(np.isfinite(direction)) or scene.ngeom >= scene.maxgeom:
+        return
+    start = np.asarray(start, dtype=np.float64).reshape(3)
+    end = start + direction / norm * float(length)
+    geom = scene.geoms[scene.ngeom]
+    mujoco.mjv_connector(
+        geom,
+        mujoco.mjtGeom.mjGEOM_ARROW,
+        float(width),
+        start,
+        end,
+    )
+    geom.rgba[:] = np.asarray(rgba, dtype=np.float32)
+    scene.ngeom += 1
+
+
+def draw_landing_planner_visuals(viewer, landing_cmd):
+    if not hasattr(viewer, "user_scn"):
+        return
+    scene = viewer.user_scn
+    scene.ngeom = 0
+    if landing_cmd is None or not landing_cmd.valid:
+        return
+
+    hit_pos = np.asarray(landing_cmd.predicted_hit_ball_pos_w, dtype=np.float64).reshape(3)
+    if not np.all(np.isfinite(hit_pos)):
+        return
+
+    add_visual_sphere(scene, hit_pos, PLANNER_HIT_MARKER_RADIUS, [1.0, 0.1, 0.85, 0.85])
+    add_visual_arrow(
+        scene,
+        hit_pos,
+        landing_cmd.desired_ball_dir_w,
+        PLANNER_DIRECTION_ARROW_LEN,
+        0.012,
+        [1.0, 0.9, 0.05, 0.9],
+    )
+    add_visual_arrow(
+        scene,
+        hit_pos,
+        landing_cmd.racket_target_vel_w,
+        PLANNER_VELOCITY_ARROW_LEN,
+        0.008,
+        [0.0, 0.85, 1.0, 0.8],
+    )
+
+
 def predict_ball_hit_mujoco(model, data, x_hit, max_predict_time):
     """Roll out the current MuJoCo scene to predict the ball crossing x_hit."""
     ball_joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "ball_freejoint")
@@ -360,7 +473,7 @@ def update_landing_command(
 def print_debug(state_cmd, landing_cmd, contact_ball_racket, contact_ball_table):
     print(
         "[landing] valid={} reason={} t_hit={:.3f} base_tgt={} racket_pos={} racket_vel={} "
-        "ball={} vel={} hit={} contact_rb={} contact_table={}".format(
+        "ball={} vel={} hit={} dir={} forehand={} contact_rb={} contact_table={}".format(
             landing_cmd.valid,
             landing_cmd.reason,
             float(landing_cmd.racket_target_time[0]),
@@ -370,6 +483,8 @@ def print_debug(state_cmd, landing_cmd, contact_ball_racket, contact_ball_table)
             np.round(state_cmd.ball_pos, 3).tolist(),
             np.round(state_cmd.ball_vel, 3).tolist(),
             np.round(landing_cmd.predicted_hit_ball_pos_w, 3).tolist(),
+            np.round(landing_cmd.desired_ball_dir_w, 3).tolist(),
+            landing_cmd.is_forehand,
             contact_ball_racket,
             contact_ball_table,
         )
@@ -411,6 +526,9 @@ if __name__ == "__main__":
     control_dt = simulation_dt * control_decimation
 
     model = mujoco.MjModel.from_xml_path(xml_path)
+    num_dynamics_joints = apply_mjlab_joint_dynamics(model)
+    if num_dynamics_joints:
+        print(f"Applied MJLab joint dynamics to {num_dynamics_joints} joints.")
     data = mujoco.MjData(model)
     model.opt.timestep = simulation_dt
     num_joints = model.nu
@@ -469,7 +587,9 @@ if __name__ == "__main__":
             switch_requested[0] = "passive"
 
     print("Keyboard: r=reset, l=loco, t=landing policy, v=track_motion_movable_base, n=track_motion_mjlab, p=passive")
+    print("Planner visuals: magenta sphere=hit point, yellow arrow=desired ball direction, cyan arrow=racket velocity.")
 
+    latest_landing_cmd = None
     with mujoco.viewer.launch_passive(model, data, key_callback=key_callback) as viewer:
         while viewer.is_running():
             step_start = time.time()
@@ -500,6 +620,7 @@ if __name__ == "__main__":
                         force_default_pose=args.force_default_pose,
                         use_mujoco_predictor=args.planner_source == "mujoco",
                     )
+                    latest_landing_cmd = None
                 reset_requested[0] = False
 
             if switch_requested[0] is not None:
@@ -536,6 +657,7 @@ if __name__ == "__main__":
                         use_mujoco_predictor=args.planner_source == "mujoco",
                     )
                     apply_landing_command_to_state(state_cmd, landing_cmd)
+                    latest_landing_cmd = landing_cmd
                 else:
                     state_cmd.base_pos_target = None
                     state_cmd.rel_racket_target_pos_w = None
@@ -543,6 +665,7 @@ if __name__ == "__main__":
                     state_cmd.racket_target_time = None
                     state_cmd.planner_valid = False
                     landing_cmd = None
+                    latest_landing_cmd = None
 
                 fsm_controller.run()
                 policy_output_action = policy_output.actions.copy()
@@ -556,6 +679,8 @@ if __name__ == "__main__":
                     if control_tick % args.debug_every == 0 or contact_rb:
                         print_debug(state_cmd, landing_cmd, contact_rb, contact_table)
 
+            with viewer.lock():
+                draw_landing_planner_visuals(viewer, latest_landing_cmd)
             viewer.sync()
             time_until_next_step = model.opt.timestep - (time.time() - step_start)
             if time_until_next_step > 0:

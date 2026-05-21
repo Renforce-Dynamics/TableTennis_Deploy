@@ -85,7 +85,7 @@ class TrackMotionMovableBase(FSMState):
         self.dof_vel_scale = float(config.get("dof_vel_scale", 1.0))
         self.use_external_data = bool(config.get("use_external_data", True))
         self.obs_clip = float(config.get("obs_clip", 100.0))
-        self.action_clip = float(config.get("action_clip", 5.0))
+        self.action_clip = float(config.get("action_clip", config.get("clip_actions", 1.0)))
 
         # track_motion_movable_base command defaults
         self.base_target_pos = np.array(config.get("base_target_pos", [0.0, 0.0]), dtype=np.float32)
@@ -501,9 +501,10 @@ class TrackMotionMovableBase(FSMState):
 
     def run(self):
         if not self.policy_available:
-            self.policy_output.actions = self.default_angles.astype(np.float32)
-            self.policy_output.kps = self.kps.copy()
-            self.policy_output.kds = self.kds.copy()
+            self.policy_output.actions = self.default_angles[self.train_to_mj].astype(np.float32)
+            self.policy_output.kps = self.kps[self.train_to_mj].astype(np.float32)
+            self.policy_output.kds = self.kds[self.train_to_mj].astype(np.float32)
+            self.policy_output.tau_limit = self.tau_limit[self.train_to_mj].astype(np.float32)
             return
 
         self.obs = self._build_obs()
@@ -527,10 +528,12 @@ class TrackMotionMovableBase(FSMState):
         target_dof_pos = target_dof_pos_train[self.train_to_mj]
         kps = self.kps[self.train_to_mj]
         kds = self.kds[self.train_to_mj]
+        tau_limit = self.tau_limit[self.train_to_mj]
 
         self.policy_output.actions = target_dof_pos.astype(np.float32)
         self.policy_output.kps = kps.astype(np.float32)
         self.policy_output.kds = kds.astype(np.float32)
+        self.policy_output.tau_limit = tau_limit.astype(np.float32)
 
         self.counter_step += 1
         self.policy_step += 1

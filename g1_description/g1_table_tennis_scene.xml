@@ -37,9 +37,9 @@
         material="table_surface"
         contype="1"
         conaffinity="1"
-        friction="0.1 0.001 0.0001"
-        solref="0.005 0.134"
-        solimp="0.97 0.99 0.001"
+        friction="0.1 0.1 0.0001"
+        solref="-10000 -1"
+        solimp="0.9 0.95 0.001"
       />
     </body>
 
@@ -66,9 +66,9 @@
         mass="0.0027"
         contype="1"
         conaffinity="1"
-        friction="0.1 0.001 0.0001"
-        solref="0.005 0.137"
-        solimp="0.97 0.99 0.001"
+        friction="0.1 0.1 0.0001"
+        solref="-10000 -1"
+        solimp="0.9 0.95 0.001"
       />
     </body>
   </worldbody>
@@ -78,16 +78,16 @@
     <pair
       geom1="ball_geom"
       geom2="table_top"
-      friction="0.1 0.1 0.001 0.0001 0.0001"
-      solref="0.005 0.134"
-      solimp="0.97 0.99 0.001"
+      friction="0.1 0.1 0.0001 0.0001 0.0001"
+      solref="-10000 -1"
+      solimp="0.9 0.95 0.001"
     />
     <pair
       geom1="ball_geom"
-      geom2="right_racket_collision"
-      friction="0.6 0.6 0.1 0.1 0.1"
-      solref="0.005 0.18"
-      solimp="0.97 0.99 0.001"
+      geom2="right_hand_collision"
+      friction="0.08 0.002 0.0001 0.0001 0.0001"
+      solref="0.02 1"
+      solimp="0.9 0.95 0.001"
     />
   </contact>
 </mujoco>

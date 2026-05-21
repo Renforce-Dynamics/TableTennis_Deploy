@@ -15,6 +15,8 @@ uv run python deploy_mujoco/deploy_mujoco_landing.py \
 
 这条命令走当前主线：`track_motion_movable_base` + landing planner command injection。默认 `--planner-source mujoco`，会用 MuJoCo 自己向前滚动预测击球点，避免 planner 和 XML/contact 动力学不同步。
 
+打开 viewer 后会显示 planner 可视化：紫色球是规划击球点，黄色箭头是期望出球参考方向，青色箭头是规划球拍速度方向。`--debug-every 1` 的终端输出里也会打印 `hit=`、`dir=`、`forehand=`，方便对照具体坐标。
+
 注意：
 
 - 当前场景应使用 `g1_29dof_rev_1_0_racket.xml`。
