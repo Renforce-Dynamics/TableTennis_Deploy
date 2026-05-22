@@ -2,6 +2,7 @@ from common.path_config import PROJECT_ROOT
 
 from FSM.FSMState import FSMStateName, FSMState
 from common.ctrlcomp import StateAndCmd, PolicyOutput
+import inspect
 import numpy as np
 import yaml
 from common.utils import FSMCommand, progress_bar
@@ -12,61 +13,70 @@ import os
 from typing import Optional, Tuple
 
 
+# Shared MuJoCo runtime joint order — fixed by the XML, identical for every
+# TrackMotion variant.
+_MJ_JOINT_NAMES = [
+    "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint",
+    "left_ankle_pitch_joint", "left_ankle_roll_joint", "right_hip_pitch_joint", "right_hip_roll_joint",
+    "right_hip_yaw_joint", "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
+    "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint", "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint", "left_wrist_roll_joint",
+    "left_wrist_pitch_joint", "left_wrist_yaw_joint", "right_shoulder_pitch_joint", "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint", "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint",
+    "right_wrist_yaw_joint",
+]
+
+# Default training joint permutation (mjlab order). Subclasses targeting a
+# different training stack (e.g. IsaacLab) override the TRAIN_JOINT_NAMES class
+# attribute and the rest of the pipeline rewires automatically.
+_DEFAULT_TRAIN_JOINT_NAMES = list(_MJ_JOINT_NAMES)
+
+
 class TrackMotionMovableBase(FSMState):
+    """Shared TrackMotion runtime: 104-D obs / 29-D action ONNX policy with
+    asymmetric planner-driven strike-target observation (rel_racket_target_pos_w,
+    racket_target_time, racket_target_vel_w).
+
+    Subclasses customise three things via class attributes and inherit the
+    obs/action pipeline unchanged:
+
+      - ``TRAIN_JOINT_NAMES``      training joint permutation
+      - ``DEFAULT_STATE_NAME``     FSMStateName the policy registers as
+      - ``DEFAULT_STATE_NAME_STR`` human-readable FSM identity string
+      - ``DEFAULT_CONFIG_FILENAME`` yaml file inside ``<class file>/config/``
+      - ``LOG_PREFIX``             prefix for runtime error messages
+
+    Constructor kwargs (``state_name``, ``state_name_str``, ``config_path``)
+    are honoured for ad-hoc reuse — this is how ``landing_assist_finetune``
+    reuses this class with a different yaml.
+    """
+
+    TRAIN_JOINT_NAMES: list = _DEFAULT_TRAIN_JOINT_NAMES
+    DEFAULT_STATE_NAME = FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE
+    DEFAULT_STATE_NAME_STR = "skill_track_motion_movable_base"
+    DEFAULT_CONFIG_FILENAME = "TrackMotionMovableBase.yaml"
+    LOG_PREFIX = "TrackMotionMovableBase"
+
     def __init__(
         self,
         state_cmd: StateAndCmd,
         policy_output: PolicyOutput,
         *,
-        state_name=FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE,
-        state_name_str: str = "skill_track_motion_movable_base",
+        state_name=None,
+        state_name_str: Optional[str] = None,
         config_path: Optional[str] = None,
     ):
         super().__init__()
         self.state_cmd = state_cmd
         self.policy_output = policy_output
-        self.name = state_name
-        self.name_str = state_name_str
-        self._default_state_name = state_name
+        self.name = state_name if state_name is not None else self.DEFAULT_STATE_NAME
+        self.name_str = state_name_str if state_name_str is not None else self.DEFAULT_STATE_NAME_STR
+        self._default_state_name = self.name
         self.counter_step = 0
         self.ref_motion_phase = 0.0
 
-        # MuJoCo/runtime joint order
-        self.mj_joint_names = [
-            "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint",
-            "left_ankle_pitch_joint", "left_ankle_roll_joint", "right_hip_pitch_joint", "right_hip_roll_joint",
-            "right_hip_yaw_joint", "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
-            "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint", "left_shoulder_pitch_joint",
-            "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint", "left_wrist_roll_joint",
-            "left_wrist_pitch_joint", "left_wrist_yaw_joint", "right_shoulder_pitch_joint", "right_shoulder_roll_joint",
-            "right_shoulder_yaw_joint", "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint",
-            "right_wrist_yaw_joint",
-        ]
-
-        # RL training joint order (Isaac Gym / track_motion_movable_base)
-        
-        #下面的是isaaclab
-        # self.train_joint_names = [
-        #     "left_hip_pitch_joint", "right_hip_pitch_joint", "waist_yaw_joint", "left_hip_roll_joint",
-        #     "right_hip_roll_joint", "waist_roll_joint", "left_hip_yaw_joint", "right_hip_yaw_joint",
-        #     "waist_pitch_joint", "left_knee_joint", "right_knee_joint", "left_shoulder_pitch_joint",
-        #     "right_shoulder_pitch_joint", "left_ankle_pitch_joint", "right_ankle_pitch_joint",
-        #     "left_shoulder_roll_joint", "right_shoulder_roll_joint", "left_ankle_roll_joint",
-        #     "right_ankle_roll_joint", "left_shoulder_yaw_joint", "right_shoulder_yaw_joint",
-        #     "left_elbow_joint", "right_elbow_joint", "left_wrist_roll_joint", "right_wrist_roll_joint",
-        #     "left_wrist_pitch_joint", "right_wrist_pitch_joint", "left_wrist_yaw_joint", "right_wrist_yaw_joint",
-        # ]
-        # #下面的是mjlab
-        self.train_joint_names = [
-            "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint",
-            "left_ankle_pitch_joint", "left_ankle_roll_joint", "right_hip_pitch_joint", "right_hip_roll_joint",
-            "right_hip_yaw_joint", "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
-            "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint", "left_shoulder_pitch_joint",
-            "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint", "left_wrist_roll_joint",
-            "left_wrist_pitch_joint", "left_wrist_yaw_joint", "right_shoulder_pitch_joint", "right_shoulder_roll_joint",
-            "right_shoulder_yaw_joint", "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint",
-            "right_wrist_yaw_joint",
-        ]
+        self.mj_joint_names = list(_MJ_JOINT_NAMES)
+        self.train_joint_names = list(self.TRAIN_JOINT_NAMES)
 
         self.mj_to_train = np.array(
             [self.mj_joint_names.index(name) for name in self.train_joint_names], dtype=np.int32
@@ -75,9 +85,11 @@ class TrackMotionMovableBase(FSMState):
             [self.train_joint_names.index(name) for name in self.mj_joint_names], dtype=np.int32
         )
 
-        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # Resolve assets relative to the *subclass* module file so each variant
+        # picks up its own model/ and config/ directories without extra kwargs.
+        current_dir = os.path.dirname(os.path.abspath(inspect.getfile(type(self))))
         if config_path is None:
-            config_path = os.path.join(current_dir, "config", "TrackMotionMovableBase.yaml")
+            config_path = os.path.join(current_dir, "config", self.DEFAULT_CONFIG_FILENAME)
         config = self._load_config(config_path)
 
         self.onnx_path = self._resolve_path(current_dir, config.get("onnx_path", "model/policy.onnx"))
@@ -119,7 +131,7 @@ class TrackMotionMovableBase(FSMState):
         )
         base_target_pos_range_cfg = config.get("base_target_pos_range", {}) or {}
         if not isinstance(base_target_pos_range_cfg, dict):
-            raise ValueError("TrackMotionMovableBase base_target_pos_range must be a mapping.")
+            raise ValueError(f"{self.LOG_PREFIX} base_target_pos_range must be a mapping.")
         self.base_target_pos_y_range = self._range_from_config(
             base_target_pos_range_cfg.get("pos_y", None),
             float(self.base_target_pos[1]),
@@ -205,14 +217,14 @@ class TrackMotionMovableBase(FSMState):
         try:
             self._load_policy()
             self.policy_available = True
-            print("TrackMotionMovableBase policy initializing ...")
+            print(f"{self.LOG_PREFIX} policy initializing ...")
         except Exception as exc:
             self.init_error = str(exc)
-            print(f"TrackMotionMovableBase policy unavailable: {self.init_error}")
+            print(f"{self.LOG_PREFIX} policy unavailable: {self.init_error}")
 
     def _load_config(self, config_path: str):
         if not os.path.exists(config_path):
-            print(f"TrackMotionMovableBase config not found: {config_path}, fallback to defaults.")
+            print(f"{self.LOG_PREFIX} config not found: {config_path}, fallback to defaults.")
             return {}
         with open(config_path, "r") as f:
             return yaml.load(f, Loader=yaml.FullLoader)
@@ -232,7 +244,7 @@ class TrackMotionMovableBase(FSMState):
         if arr.shape[0] == 1 and length > 1:
             arr = np.full(length, float(arr[0]), dtype=np.float32)
         if arr.shape[0] != length:
-            raise ValueError(f"TrackMotionMovableBase {key} size must be 1 or {length}, got {arr.shape[0]}")
+            raise ValueError(f"{self.LOG_PREFIX} {key} size must be 1 or {length}, got {arr.shape[0]}")
         return arr[self.mj_to_train]
 
     def _range_from_config(self, value, default: float) -> Tuple[float, float]:
@@ -244,7 +256,7 @@ class TrackMotionMovableBase(FSMState):
         elif arr.shape[0] == 2:
             low, high = float(arr[0]), float(arr[1])
         else:
-            raise ValueError(f"TrackMotionMovableBase range expects 1 or 2 values, got {arr.shape[0]}")
+            raise ValueError(f"{self.LOG_PREFIX} range expects 1 or 2 values, got {arr.shape[0]}")
         if low > high:
             low, high = high, low
         return low, high
@@ -252,7 +264,7 @@ class TrackMotionMovableBase(FSMState):
     def _load_racket_target_pose_range(self, section, fallback_pos: np.ndarray, fallback_vel: np.ndarray):
         section = section or {}
         if not isinstance(section, dict):
-            raise ValueError("TrackMotionMovableBase racket target pose range config must be a mapping.")
+            raise ValueError(f"{self.LOG_PREFIX} racket target pose range config must be a mapping.")
         return {
             "pos_x": self._range_from_config(section.get("pos_x", None), float(fallback_pos[0])),
             "pos_y": self._range_from_config(section.get("pos_y", None), float(fallback_pos[1])),
@@ -404,25 +416,25 @@ class TrackMotionMovableBase(FSMState):
 
     def _validate_config(self):
         if self.default_angles.shape[0] != self.num_actions:
-            raise ValueError("TrackMotionMovableBase default_angles size must match num_actions.")
+            raise ValueError(f"{self.LOG_PREFIX} default_angles size must match num_actions.")
         if self.kps.shape[0] != self.num_actions or self.kds.shape[0] != self.num_actions:
-            raise ValueError("TrackMotionMovableBase kps/kds size must match num_actions.")
+            raise ValueError(f"{self.LOG_PREFIX} kps/kds size must match num_actions.")
         if self.action_scale.shape[0] not in (1, self.num_actions):
-            raise ValueError("TrackMotionMovableBase action_scale must have length 1 or num_actions.")
+            raise ValueError(f"{self.LOG_PREFIX} action_scale must have length 1 or num_actions.")
         if self.obs_dim * self.history_length != self.num_obs:
-            raise ValueError("TrackMotionMovableBase obs_dim * history_length must equal num_obs.")
+            raise ValueError(f"{self.LOG_PREFIX} obs_dim * history_length must equal num_obs.")
         if self.base_target_pos.shape[0] != 2:
-            raise ValueError("TrackMotionMovableBase base_target_pos must contain 2 values.")
+            raise ValueError(f"{self.LOG_PREFIX} base_target_pos must contain 2 values.")
         if self.racket_target_pos_w_default.shape[0] != 3:
-            raise ValueError("TrackMotionMovableBase racket_target_pos_w must contain 3 values.")
+            raise ValueError(f"{self.LOG_PREFIX} racket_target_pos_w must contain 3 values.")
         if self.racket_target_vel_w_default.shape[0] != 3:
-            raise ValueError("TrackMotionMovableBase racket_target_vel_w must contain 3 values.")
+            raise ValueError(f"{self.LOG_PREFIX} racket_target_vel_w must contain 3 values.")
         if self.command_time_step_total <= 0:
-            raise ValueError("TrackMotionMovableBase command_time_step_total must be positive.")
+            raise ValueError(f"{self.LOG_PREFIX} command_time_step_total must be positive.")
 
     def _load_policy(self):
         if self.use_external_data and not os.path.exists(self.onnx_data_path):
-            print(f"TrackMotionMovableBase external data file not found: {self.onnx_data_path}, continue without it.")
+            print(f"{self.LOG_PREFIX} external data file not found: {self.onnx_data_path}, continue without it.")
 
         self._fill_from_onnx_metadata_if_needed()
 
@@ -430,7 +442,7 @@ class TrackMotionMovableBase(FSMState):
         inputs = self.ort_session.get_inputs()
         outputs = self.ort_session.get_outputs()
         if len(outputs) != 1:
-            raise ValueError("TrackMotionMovableBase expects single output ONNX policy.")
+            raise ValueError(f"{self.LOG_PREFIX} expects single output ONNX policy.")
 
         self.input_names = [inp.name for inp in inputs]
         self.output_name = outputs[0].name
@@ -447,9 +459,9 @@ class TrackMotionMovableBase(FSMState):
         out_shape = outputs[0].shape
 
         if isinstance(obs_shape[-1], int) and obs_shape[-1] != self.num_obs:
-            raise ValueError(f"TrackMotionMovableBase num_obs mismatch: config={self.num_obs}, onnx={obs_shape[-1]}")
+            raise ValueError(f"{self.LOG_PREFIX} num_obs mismatch: config={self.num_obs}, onnx={obs_shape[-1]}")
         if isinstance(out_shape[-1], int) and out_shape[-1] != self.num_actions:
-            raise ValueError(f"TrackMotionMovableBase num_actions mismatch: config={self.num_actions}, onnx={out_shape[-1]}")
+            raise ValueError(f"{self.LOG_PREFIX} num_actions mismatch: config={self.num_actions}, onnx={out_shape[-1]}")
 
         # Warm-up
         for _ in range(5):
@@ -539,7 +551,7 @@ class TrackMotionMovableBase(FSMState):
             value = np.asarray(obs_terms[name], dtype=np.float32).reshape(-1)
             if value.shape[0] != self.term_dims[name]:
                 raise ValueError(
-                    f"TrackMotionMovableBase obs term '{name}' mismatch: {value.shape[0]} != {self.term_dims[name]}"
+                    f"{self.LOG_PREFIX} obs term '{name}' mismatch: {value.shape[0]} != {self.term_dims[name]}"
                 )
             self.term_history[name] = np.roll(self.term_history[name], shift=-1, axis=0)
             self.term_history[name][-1] = value
@@ -549,7 +561,7 @@ class TrackMotionMovableBase(FSMState):
         if self.obs_clip > 0.0:
             obs = np.clip(obs, -self.obs_clip, self.obs_clip)
         if obs.shape[0] != self.num_obs:
-            raise ValueError(f"TrackMotionMovableBase obs mismatch: got {obs.shape[0]}, expected {self.num_obs}")
+            raise ValueError(f"{self.LOG_PREFIX} obs mismatch: got {obs.shape[0]}, expected {self.num_obs}")
         return obs
 
     def enter(self):

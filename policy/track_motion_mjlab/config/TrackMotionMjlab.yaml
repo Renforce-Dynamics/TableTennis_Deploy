@@ -41,6 +41,11 @@ base_target_pos_range:
   # Base fixed: y target is not sampled.
   pos_y: [0.0, 0.0]
 
+# mjlab variant was trained without world-frame directional rotation on the
+# racket velocity target. Keep the shared TrackMotion runtime in a no-op mode.
+directional_velocity_sampling:
+  enabled: false
+
 kps:
   [
     40.17923847366999,
