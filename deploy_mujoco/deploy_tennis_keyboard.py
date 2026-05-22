@@ -21,12 +21,10 @@ from common.landing_command import LandingCommandGenerator
 from common.policy_registry import (
     EXTRA_POLICY_SPECS,
     get_policy_choices,
-    get_policy_state,
-    is_landing_policy,
 )
 from common.utils import FSMCommand, FSMStateName
 
-from deploy_mujoco.deploy_mujoco_landing import (
+from deploy_mujoco.sim2sim_common import (
     BallRespawnTracker,
     add_debug_strike_args,
     add_planner_args,
@@ -34,6 +32,7 @@ from deploy_mujoco.deploy_mujoco_landing import (
     apply_debug_strike_overrides,
     apply_pd_and_step,
     ball_is_outside_demo_area,
+    draw_planner_markers,
     get_robot_state_slices,
     has_contact,
     has_racket_ball_contact,
@@ -54,7 +53,6 @@ TABLE_POLICY_BY_KEY = {
     "5": "track_motion_mjlab",
     "6": "landing_assist_finetune",
 }
-TRACK_MOTION_MOVABLE_BASE_STATE = get_policy_state("track_motion_movable_base")
 TABLE_POLICY_NAMES = tuple(spec.key for spec in EXTRA_POLICY_SPECS)
 TABLE_POLICY_STATES = tuple(spec.state for spec in EXTRA_POLICY_SPECS)
 
@@ -244,143 +242,6 @@ def print_keyboard_help(selected_table_policy):
     print("Selected table policy:", selected_table_policy)
 
 
-def add_sphere_marker(scene, pos, radius, rgba):
-    if scene.ngeom >= scene.maxgeom:
-        return
-    geom = scene.geoms[scene.ngeom]
-    mujoco.mjv_initGeom(
-        geom,
-        mujoco.mjtGeom.mjGEOM_SPHERE,
-        np.array([radius, radius, radius], dtype=np.float64),
-        np.asarray(pos, dtype=np.float64),
-        np.eye(3, dtype=np.float64).reshape(-1),
-        np.asarray(rgba, dtype=np.float32),
-    )
-    scene.ngeom += 1
-
-
-def add_arrow_marker(scene, start, direction, length, rgba):
-    direction = np.asarray(direction, dtype=np.float64).reshape(3)
-    norm = float(np.linalg.norm(direction))
-    if norm < 1.0e-8 or scene.ngeom >= scene.maxgeom:
-        return
-    start = np.asarray(start, dtype=np.float64).reshape(3)
-    end = start + direction / norm * float(length)
-    geom = scene.geoms[scene.ngeom]
-    mujoco.mjv_connector(
-        geom,
-        mujoco.mjtGeom.mjGEOM_ARROW,
-        0.018,
-        start,
-        end,
-    )
-    geom.rgba[:] = np.asarray(rgba, dtype=np.float32)
-    scene.ngeom += 1
-
-
-def _get_first_geom_id(model, candidates):
-    for name in candidates:
-        gid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, name)
-        if gid != -1:
-            return gid
-    return -1
-
-
-def _get_racket_body_id(model):
-    for name in ("right_racket", "right_wrist_yaw_link", "right_hand"):
-        bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
-        if bid != -1:
-            return bid
-    return -1
-
-
-def draw_planner_markers(viewer, model, data, fsm_controller, state_cmd, landing_cmd, args):
-    viewer.user_scn.ngeom = 0
-    if (
-        not args.draw_planner
-        or landing_cmd is None
-        or not landing_cmd.valid
-        or fsm_controller.cur_policy.name != TRACK_MOTION_MOVABLE_BASE_STATE
-    ):
-        return
-
-    hit_pos = np.asarray(landing_cmd.predicted_hit_ball_pos_w, dtype=np.float64)
-    base_pos = np.asarray(getattr(state_cmd, "base_pos", np.zeros(3)), dtype=np.float64).reshape(3)
-    rel_target = getattr(state_cmd, "rel_racket_target_pos_w", None)
-    expected_racket_pos = None
-    if rel_target is not None:
-        rel_target = np.asarray(rel_target, dtype=np.float64).reshape(3)
-        expected_racket_pos = base_pos + rel_target
-
-    geom_id = _get_first_geom_id(model, ("right_hand_collision", "right_racket_collision"))
-    actual_racket_pos = None
-    actual_normal_w = None
-    if geom_id != -1:
-        actual_racket_pos = np.asarray(data.geom_xpos[geom_id], dtype=np.float64).reshape(3)
-        xmat = data.geom_xmat[geom_id].reshape(3, 3)
-        local_axis = getattr(state_cmd, "racket_face_axis_local", None)
-        if local_axis is None:
-            local_axis = np.array([0.0, 0.0, 1.0], dtype=np.float64)
-        else:
-            local_axis = np.asarray(local_axis, dtype=np.float64).reshape(3)
-        actual_normal_w = xmat @ local_axis
-
-    body_id = _get_racket_body_id(model)
-    actual_vel_w = None
-    if body_id != -1:
-        vel6 = np.zeros(6, dtype=np.float64)
-        mujoco.mj_objectVelocity(model, data, mujoco.mjtObj.mjOBJ_BODY, body_id, vel6, 0)
-        actual_vel_w = vel6[3:6]
-
-    add_sphere_marker(viewer.user_scn, hit_pos, 0.045, [0.0, 1.0, 0.15, 0.85])
-    add_arrow_marker(
-        viewer.user_scn,
-        hit_pos,
-        landing_cmd.desired_ball_dir_w,
-        args.planner_arrow_length,
-        [0.0, 1.0, 0.15, 0.9],
-    )
-    if expected_racket_pos is not None:
-        add_sphere_marker(viewer.user_scn, expected_racket_pos, 0.030, [1.0, 0.25, 0.85, 0.95])
-        add_arrow_marker(
-            viewer.user_scn,
-            expected_racket_pos,
-            landing_cmd.racket_target_vel_w,
-            args.planner_arrow_length,
-            [1.0, 0.1, 0.05, 0.9],
-        )
-    desired_normal = getattr(landing_cmd, "desired_racket_normal_w", None)
-    if desired_normal is not None and expected_racket_pos is not None:
-        add_arrow_marker(
-            viewer.user_scn,
-            expected_racket_pos,
-            desired_normal,
-            args.planner_arrow_length,
-            [0.2, 0.45, 1.0, 0.9],
-        )
-
-    # Actual racket face normal in world frame (cyan) and actual racket
-    # linear velocity (yellow), both anchored at the current racket position.
-    if actual_racket_pos is not None:
-        add_sphere_marker(viewer.user_scn, actual_racket_pos, 0.024, [1.0, 0.75, 0.1, 0.95])
-    if actual_racket_pos is not None and actual_normal_w is not None:
-        add_arrow_marker(
-            viewer.user_scn,
-            actual_racket_pos,
-            actual_normal_w,
-            args.planner_arrow_length,
-            [0.0, 1.0, 1.0, 0.95],
-        )
-    if actual_racket_pos is not None and actual_vel_w is not None:
-        add_arrow_marker(
-            viewer.user_scn,
-            actual_racket_pos,
-            actual_vel_w,
-            args.planner_arrow_length,
-            [1.0, 1.0, 0.0, 0.95],
-        )
-
-
 if __name__ == "__main__":
     args = parse_args()
     xml_path, simulation_dt, control_decimation = load_mujoco_config(args.mujoco_config)
@@ -533,7 +394,11 @@ if __name__ == "__main__":
                     if control_tick % args.debug_every == 0 or contact_rb:
                         print_debug(state_cmd, landing_cmd, contact_rb, contact_table, model, data)
 
-            draw_planner_markers(viewer, model, data, fsm_controller, state_cmd, latest_landing_cmd[0], args)
+            draw_planner_markers(
+                viewer, model, data, fsm_controller, state_cmd, latest_landing_cmd[0],
+                enabled=args.draw_planner,
+                arrow_length=args.planner_arrow_length,
+            )
             viewer.sync()
             time_until_next_step = model.opt.timestep - (time.time() - step_start)
             if time_until_next_step > 0:

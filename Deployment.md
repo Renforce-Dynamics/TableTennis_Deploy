@@ -5,7 +5,7 @@
 详细说明见 [`README_TRACK_MOTION_LANDING.md`](README_TRACK_MOTION_LANDING.md)。
 
 ```bash
-uv run python deploy_mujoco/deploy_mujoco_landing.py \
+uv run python deploy_mujoco/deploy_tennis_keyboard.py \
   --start-policy track_motion_movable_base \
   --fixed-initial-ball \
   --ball-pos 3.5 -0.2 1.0 \
@@ -34,12 +34,12 @@ uv run --group real python deploy_real/deploy_real_landing.py \
 **MuJoCo 里跑 distill**
 ```bash
 cd /home/infinite/RoboMimic_Deploy
-.venv/bin/python deploy_mujoco/deploy_mujoco_no_joystick.py --table-policy table_tennis_distill
+.venv/bin/python deploy_mujoco/deploy_tennis_keyboard.py --table-policy table_tennis_distill
 ```
 
 带 debug 看 obs/action：
 ```bash
-.venv/bin/python deploy_mujoco/deploy_mujoco_no_joystick.py --table-policy table_tennis_distill --debug-frames 20
+.venv/bin/python deploy_mujoco/deploy_tennis_keyboard.py --table-policy table_tennis_distill --debug-frames 20
 ```
 
 键盘流程：

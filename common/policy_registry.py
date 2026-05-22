@@ -100,8 +100,8 @@ def load_extra_policy_class(spec: ExtraPolicySpec):
     return getattr(module, spec.attr_name)
 
 
-# Policies that consume the planner→policy LandingCommand bridge in
-# `deploy_mujoco_landing.py` and `deploy_mujoco_track_motion_movable_base.py`.
+# Policies that consume the planner→policy LandingCommand bridge in the
+# table-tennis sim2sim entrypoints (deploy_tennis_keyboard / _joystick).
 LANDING_POLICY_STATES = (
     FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE,
     FSMStateName.SKILL_LANDING_ASSIST_FINETUNE,

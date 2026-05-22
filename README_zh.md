@@ -81,7 +81,7 @@ uv pip install -e .
 
 ## 1. 运行Mujoco仿真代码
 ```bash
-python deploy_mujoco/deploy_mujoco.py
+python deploy_mujoco/deploy_blind_joystick.py
 ```
 ---
 ## 2. Policy 说明
@@ -125,7 +125,7 @@ python deploy_mujoco/deploy_mujoco.py
 
 2. 运行仿真程序：
 ```bash
-python deploy_mujoco/deploy_mujoco.py
+python deploy_mujoco/deploy_blind_joystick.py
 ```
 3. Start键进入位控模式
 

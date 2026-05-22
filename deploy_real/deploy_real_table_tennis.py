@@ -196,7 +196,7 @@ def parse_args():
         "--policy",
         default="table_tennis",
         choices=get_policy_choices(include_base=False),
-        help="Table tennis policy to deploy. Names match deploy_mujoco_no_joystick.py --start-policy.",
+        help="Table tennis policy to deploy. Names match deploy_tennis_keyboard.py --start-policy.",
     )
     parser.add_argument(
         "--ball-pos",

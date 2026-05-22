@@ -4,7 +4,7 @@
 
 conda activate robomimic
 
-python deploy_mujoco/deploy_mujoco_no_joystick.py --table-policy table_tennis
+python deploy_mujoco/deploy_tennis_keyboard.py --table-policy table_tennis
 
 键盘流程：
 

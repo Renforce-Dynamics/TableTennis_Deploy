@@ -1,8 +1,8 @@
-# deploy_mujoco_keyboard 与 deploy_real_track_motion 使用说明
+# deploy_blind_keyboard 与 deploy_real_track_motion 使用说明
 
 本文档包含两部分：
 
-- `python3 deploy_mujoco/deploy_mujoco_keyboard.py`（MuJoCo 键盘控制）
+- `python3 deploy_mujoco/deploy_blind_keyboard.py`（MuJoCo 键盘控制）
 - `python3 deploy_real/deploy_real_track_motion.py`（真机遥控控制）
 
 MuJoCo 部分重点覆盖以下三个任务/状态：
@@ -16,15 +16,15 @@ MuJoCo 部分重点覆盖以下三个任务/状态：
 在仓库根目录执行：
 
 ```bash
-python3 deploy_mujoco/deploy_mujoco_keyboard.py
+python3 deploy_mujoco/deploy_blind_keyboard.py
 ```
 
 可选参数：
 
 ```bash
-python3 deploy_mujoco/deploy_mujoco_keyboard.py --start-policy loco
-python3 deploy_mujoco/deploy_mujoco_keyboard.py --start-policy track_motion_mjlab
-python3 deploy_mujoco/deploy_mujoco_keyboard.py --start-policy track_motion_movable_base
+python3 deploy_mujoco/deploy_blind_keyboard.py --start-policy loco
+python3 deploy_mujoco/deploy_blind_keyboard.py --start-policy track_motion_mjlab
+python3 deploy_mujoco/deploy_blind_keyboard.py --start-policy track_motion_movable_base
 ```
 
 支持的 `--start-policy`：
@@ -130,7 +130,7 @@ python3 deploy_mujoco/deploy_mujoco_keyboard.py --start-policy track_motion_mova
 
 ### Q3: 想改步长/限幅
 
-- 步长在 `deploy_mujoco/deploy_mujoco_keyboard.py`：
+- 步长在 `deploy_mujoco/deploy_blind_keyboard.py`：
   - `loco_step_x`, `loco_step_y`
   - `base_step_x`, `base_step_y`
 - `loco` 限幅来自 `policy/loco_mode/config/LocoMode.yaml`。

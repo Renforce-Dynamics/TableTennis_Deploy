@@ -11,7 +11,7 @@
 在仿真中模拟真机完全无航位推算的表现。
 
 ```bash
-python3 deploy_mujoco/deploy_mujoco_track_blind.py --start-policy track_motion_mjlab
+python3 deploy_mujoco/deploy_blind_keyboard.py --start-policy track_motion_mjlab
 ```
 
 *说明：在 MuJoCo 里面，当切入 `track_motion_mjlab` 后，传给控制器的 `base_pos` 和 `base_lin_vel` 会被强行截断和覆写。可以通过键盘调整目标，对照机器人表现。*
@@ -26,7 +26,7 @@ python3 deploy_real/deploy_real_track_blind.py
 
 *说明：脚本默认进入 `loco` 模式，请在准备好后按手柄 `X + L1` 切换到 `track_motion_mjlab` (静态击球) 模式。此时 Odom 数据会被彻底弃用，终端会循环打印 `(BLIND TEST: pos/vel hardcoded)`。*
 
-**排查结论提示**：如果在仿真中（`deploy_mujoco_track_blind.py`）机器人不发散、不乱走，而真机（`deploy_real_track_blind.py`）表现却漂移摔倒，即可**完全排除观测传感器不对齐的干扰**，100% 确认问题来源于 **纯粹的物理动力学特征 Gap**（如：现实中机器人的运动延迟、地面摩擦系数、关节的 PD 增益镇不住现实的重量分配等）。
+**排查结论提示**：如果在仿真中（`deploy_blind_keyboard.py`）机器人不发散、不乱走，而真机（`deploy_real_track_blind.py`）表现却漂移摔倒，即可**完全排除观测传感器不对齐的干扰**，100% 确认问题来源于 **纯粹的物理动力学特征 Gap**（如：现实中机器人的运动延迟、地面摩擦系数、关节的 PD 增益镇不住现实的重量分配等）。
 
 ---
 
@@ -49,7 +49,7 @@ bash
 运行
 
 ```
-python3 deploy_mujoco/deploy_mujoco_no_joystick.py --start-policy track_motion_mjlab
+python3 deploy_mujoco/deploy_tennis_keyboard.py --start-policy track_motion_mjlab
 ```
 
 ## 修改内容
@@ -124,15 +124,15 @@ self.train_joint_names = [
 
 ### 总结
 
-1. 运行命令：`conda activate robomimic` →`python3 deploy_mujoco/deploy_mujoco_no_joystick.py --start-policy track_motion_mjlab`
+1. 运行命令：`conda activate robomimic` →`python3 deploy_mujoco/deploy_tennis_keyboard.py --start-policy track_motion_mjlab`
 2. 核心修改：新增`track_motion`、更新 yaml/xml/ 代码、统一机器人模型
 3. ONNX 切换：IsaacLab 用`policy_isaaclab.onnx`，MJLab 用`policy.onnx`，关节名与配置同步反向修改
 
-## deploy_mujoco_keyboard 与 deploy_real_track_motion 使用说明
+## deploy_blind_keyboard 与 deploy_real_track_motion 使用说明
 
 本文档包含两部分：
 
-- `python3 deploy_mujoco/deploy_mujoco_keyboard.py`（MuJoCo 键盘控制）
+- `python3 deploy_mujoco/deploy_blind_keyboard.py`（MuJoCo 键盘控制）
 - `python3 deploy_real/deploy_real_track_motion.py`（真机遥控控制）
 
 MuJoCo 部分重点覆盖以下三个任务/状态：
@@ -146,15 +146,15 @@ MuJoCo 部分重点覆盖以下三个任务/状态：
 在仓库根目录执行：
 
 ```bash
-python3 deploy_mujoco/deploy_mujoco_keyboard.py
+python3 deploy_mujoco/deploy_blind_keyboard.py
 ```
 
 可选参数：
 
 ```bash
-python3 deploy_mujoco/deploy_mujoco_keyboard.py --start-policy loco
-python3 deploy_mujoco/deploy_mujoco_keyboard.py --start-policy track_motion_mjlab
-python3 deploy_mujoco/deploy_mujoco_keyboard.py --start-policy track_motion_movable_base
+python3 deploy_mujoco/deploy_blind_keyboard.py --start-policy loco
+python3 deploy_mujoco/deploy_blind_keyboard.py --start-policy track_motion_mjlab
+python3 deploy_mujoco/deploy_blind_keyboard.py --start-policy track_motion_movable_base
 ```
 
 支持的 `--start-policy`：
@@ -260,7 +260,7 @@ python3 deploy_mujoco/deploy_mujoco_keyboard.py --start-policy track_motion_mova
 
 ### Q3: 想改步长/限幅
 
-- 步长在 `deploy_mujoco/deploy_mujoco_keyboard.py`：
+- 步长在 `deploy_mujoco/deploy_blind_keyboard.py`：
   - `loco_step_x`, `loco_step_y`
   - `base_step_x`, `base_step_y`
 - `loco` 限幅来自 `policy/loco_mode/config/LocoMode.yaml`。

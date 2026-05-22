@@ -33,14 +33,14 @@ cd ..
 
 ### Run with uv (no activation needed)
 ```bash
-uv run python deploy_mujoco/deploy_mujoco.py
+uv run python deploy_mujoco/deploy_blind_joystick.py
 uv run python test_table_tennis.py
 ```
 
 ### Or activate the virtual environment
 ```bash
 source .venv/bin/activate
-python deploy_mujoco/deploy_mujoco.py
+python deploy_mujoco/deploy_blind_joystick.py
 ```
 
 ## Benefits of uv
