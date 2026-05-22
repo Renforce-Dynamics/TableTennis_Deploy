@@ -126,6 +126,14 @@ class LocoMode(FSMState):
             return FSMStateName.SKILL_TRACK_MOTION_MJLAB
         elif(self.state_cmd.skill_cmd == FSMCommand.TRACK_MOTION_MOVABLE_BASE):
             return FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE
+        elif(self.state_cmd.skill_cmd == FSMCommand.KUNGFU2):
+            return FSMStateName.SKILL_KungFu2
+        elif(self.state_cmd.skill_cmd == FSMCommand.TABLE_TENNIS_DISTILL):
+            return FSMStateName.SKILL_TABLE_TENNIS_DISTILL
+        elif(self.state_cmd.skill_cmd == FSMCommand.TABLE_TENNIS_REV_RACKET):
+            return FSMStateName.SKILL_TABLE_TENNIS_REV_RACKET
+        elif(self.state_cmd.skill_cmd == FSMCommand.LANDING_ASSIST_FINETUNE):
+            return FSMStateName.SKILL_LANDING_ASSIST_FINETUNE
         elif(self.state_cmd.skill_cmd == FSMCommand.PASSIVE):
             return FSMStateName.PASSIVE
         else:

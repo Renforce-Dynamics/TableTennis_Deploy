@@ -2,7 +2,7 @@
 # Paths can be absolute or relative to PROJECT_ROOT / this file location.
 # onnx_path: "policy/track_motion/model/policy_mjlab.onnx"
 # onnx_path: "policy/track_motion/model/policy_isaaclab.onnx"
-onnx_path: "policy/track_motion_movable_base/model/policy.onnx"
+onnx_path: "policy/track_motion_movable_base/model/policy_2.onnx"
 
 # Policy dimensions
 num_actions: 29
@@ -16,30 +16,37 @@ clip_actions: 1.0
 use_external_data: false
 
 # Track-motion command defaults (used if not provided by state_cmd)
-base_target_pos: [ 0.0, 0.0 ]
-racket_target_pos_w: [ 0.4, -0.1, 0.25 ]
-racket_target_vel_w: [ 1.5, 0.0, 0.25 ]
+base_target_pos: [0.0, 0.0]
+racket_target_pos_w: [0.4, -0.1, 0.25]
+racket_target_vel_w: [1.5, 0.0, 0.25]
 hit_time_step: 42
 
 # Track-motion command ranges (aligned with mjhitter MotionCommandCfg style).
 # If these blocks are omitted, code falls back to the fixed values above.
 forehand_racket_target_pose_range:
-  pos_x: [ 0.4, 0.4 ]
-  pos_y: [ -0.6, -0.3 ]
-  pos_z: [ 0.0, 0.5 ]
-  vel_x: [ 1.0, 2.0 ]
-  vel_y: [ -0.7, 0.7 ]
-  vel_z: [ -0.2, 0.7 ]
+  pos_x: [0.4, 0.4]
+  pos_y: [-0.6, -0.35]
+  pos_z: [0.0, 0.5]
+  vel_x: [1.0, 2.0]
+  vel_y: [-0.7, 0.7]
+  vel_z: [-0.2, 0.7]
 backhand_racket_target_pose_range:
-  pos_x: [ 0.4, 0.4 ]
-  pos_y: [ -0.1, 0.3 ]
-  pos_z: [ 0.0, 0.5 ]
-  vel_x: [ 1.0, 2.0 ]
-  vel_y: [ -0.7, 0.7 ]
-  vel_z: [ -0.2, 0.7 ]
+  pos_x: [0.4, 0.4]
+  pos_y: [-0.1, 0.3]
+  pos_z: [0.0, 0.5]
+  vel_x: [1.0, 2.0]
+  vel_y: [-0.7, 0.7]
+  vel_z: [-0.2, 0.7]
+directional_velocity_sampling:
+  enabled: true
+  pitch_deg_range: [-30.0, 45.0]
+  yaw_deg_range: [0.0, 0.0]
+  speed_scale_range: [0.85, 1.20]
+  min_speed: 0.8
+  max_speed: 2.6
 base_target_pos_range:
   # Movable base: sample y target in [-0.5, 0.5].
-  pos_y: [ -0.5, 0.5 ]
+  pos_y: [-0.5, 0.5]
 
 kps:
   [

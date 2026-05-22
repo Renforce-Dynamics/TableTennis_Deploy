@@ -9,16 +9,25 @@ import onnx
 import onnxruntime
 import torch
 import os
-from typing import Tuple
+from typing import Optional, Tuple
 
 
 class TrackMotionMovableBase(FSMState):
-    def __init__(self, state_cmd: StateAndCmd, policy_output: PolicyOutput):
+    def __init__(
+        self,
+        state_cmd: StateAndCmd,
+        policy_output: PolicyOutput,
+        *,
+        state_name=FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE,
+        state_name_str: str = "skill_track_motion_movable_base",
+        config_path: Optional[str] = None,
+    ):
         super().__init__()
         self.state_cmd = state_cmd
         self.policy_output = policy_output
-        self.name = FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE
-        self.name_str = "skill_track_motion_movable_base"
+        self.name = state_name
+        self.name_str = state_name_str
+        self._default_state_name = state_name
         self.counter_step = 0
         self.ref_motion_phase = 0.0
 
@@ -37,27 +46,27 @@ class TrackMotionMovableBase(FSMState):
         # RL training joint order (Isaac Gym / track_motion_movable_base)
         
         #下面的是isaaclab
-        self.train_joint_names = [
-            "left_hip_pitch_joint", "right_hip_pitch_joint", "waist_yaw_joint", "left_hip_roll_joint",
-            "right_hip_roll_joint", "waist_roll_joint", "left_hip_yaw_joint", "right_hip_yaw_joint",
-            "waist_pitch_joint", "left_knee_joint", "right_knee_joint", "left_shoulder_pitch_joint",
-            "right_shoulder_pitch_joint", "left_ankle_pitch_joint", "right_ankle_pitch_joint",
-            "left_shoulder_roll_joint", "right_shoulder_roll_joint", "left_ankle_roll_joint",
-            "right_ankle_roll_joint", "left_shoulder_yaw_joint", "right_shoulder_yaw_joint",
-            "left_elbow_joint", "right_elbow_joint", "left_wrist_roll_joint", "right_wrist_roll_joint",
-            "left_wrist_pitch_joint", "right_wrist_pitch_joint", "left_wrist_yaw_joint", "right_wrist_yaw_joint",
-        ]
-        # #下面的是mjlab
         # self.train_joint_names = [
-        #     "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint",
-        #     "left_ankle_pitch_joint", "left_ankle_roll_joint", "right_hip_pitch_joint", "right_hip_roll_joint",
-        #     "right_hip_yaw_joint", "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
-        #     "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint", "left_shoulder_pitch_joint",
-        #     "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint", "left_wrist_roll_joint",
-        #     "left_wrist_pitch_joint", "left_wrist_yaw_joint", "right_shoulder_pitch_joint", "right_shoulder_roll_joint",
-        #     "right_shoulder_yaw_joint", "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint",
-        #     "right_wrist_yaw_joint",
+        #     "left_hip_pitch_joint", "right_hip_pitch_joint", "waist_yaw_joint", "left_hip_roll_joint",
+        #     "right_hip_roll_joint", "waist_roll_joint", "left_hip_yaw_joint", "right_hip_yaw_joint",
+        #     "waist_pitch_joint", "left_knee_joint", "right_knee_joint", "left_shoulder_pitch_joint",
+        #     "right_shoulder_pitch_joint", "left_ankle_pitch_joint", "right_ankle_pitch_joint",
+        #     "left_shoulder_roll_joint", "right_shoulder_roll_joint", "left_ankle_roll_joint",
+        #     "right_ankle_roll_joint", "left_shoulder_yaw_joint", "right_shoulder_yaw_joint",
+        #     "left_elbow_joint", "right_elbow_joint", "left_wrist_roll_joint", "right_wrist_roll_joint",
+        #     "left_wrist_pitch_joint", "right_wrist_pitch_joint", "left_wrist_yaw_joint", "right_wrist_yaw_joint",
         # ]
+        # #下面的是mjlab
+        self.train_joint_names = [
+            "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint",
+            "left_ankle_pitch_joint", "left_ankle_roll_joint", "right_hip_pitch_joint", "right_hip_roll_joint",
+            "right_hip_yaw_joint", "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
+            "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint", "left_shoulder_pitch_joint",
+            "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint", "left_wrist_roll_joint",
+            "left_wrist_pitch_joint", "left_wrist_yaw_joint", "right_shoulder_pitch_joint", "right_shoulder_roll_joint",
+            "right_shoulder_yaw_joint", "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint",
+            "right_wrist_yaw_joint",
+        ]
 
         self.mj_to_train = np.array(
             [self.mj_joint_names.index(name) for name in self.train_joint_names], dtype=np.int32
@@ -67,7 +76,8 @@ class TrackMotionMovableBase(FSMState):
         )
 
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(current_dir, "config", "TrackMotionMovableBase.yaml")
+        if config_path is None:
+            config_path = os.path.join(current_dir, "config", "TrackMotionMovableBase.yaml")
         config = self._load_config(config_path)
 
         self.onnx_path = self._resolve_path(current_dir, config.get("onnx_path", "model/policy.onnx"))
@@ -114,6 +124,22 @@ class TrackMotionMovableBase(FSMState):
             base_target_pos_range_cfg.get("pos_y", None),
             float(self.base_target_pos[1]),
         )
+        directional_cfg = config.get("directional_velocity_sampling", {}) or {}
+        self.directional_velocity_sampling_enabled = bool(directional_cfg.get("enabled", True))
+        self.directional_pitch_deg_range = self._range_from_config(
+            directional_cfg.get("pitch_deg_range", None),
+            -30.0,
+        ) if directional_cfg.get("pitch_deg_range", None) is not None else (-30.0, 45.0)
+        self.directional_yaw_deg_range = self._range_from_config(
+            directional_cfg.get("yaw_deg_range", None),
+            0.0,
+        ) if directional_cfg.get("yaw_deg_range", None) is not None else (0.0, 0.0)
+        self.directional_speed_scale_range = self._range_from_config(
+            directional_cfg.get("speed_scale_range", None),
+            1.0,
+        ) if directional_cfg.get("speed_scale_range", None) is not None else (0.85, 1.20)
+        self.directional_min_speed = float(directional_cfg.get("min_speed", 0.8))
+        self.directional_max_speed = float(directional_cfg.get("max_speed", 2.6))
         motion_steps = int(round(self.motion_length / self.control_dt)) if self.motion_length > 0.0 else 0
         self.command_time_step_total = int(
             config.get(
@@ -242,6 +268,43 @@ class TrackMotionMovableBase(FSMState):
             return low
         return float(self.command_rng.uniform(low, high))
 
+    def _sample_structured_velocity_direction(self, base_velocity: np.ndarray) -> np.ndarray:
+        velocity = np.asarray(base_velocity, dtype=np.float32).reshape(3)
+        if not self.directional_velocity_sampling_enabled:
+            return velocity
+
+        base_speed = float(np.linalg.norm(velocity))
+        speed_scale = self._sample_range_value(self.directional_speed_scale_range)
+        speed = np.clip(
+            base_speed * speed_scale,
+            self.directional_min_speed,
+            self.directional_max_speed,
+        )
+        pitch = np.deg2rad(self._sample_range_value(self.directional_pitch_deg_range))
+        yaw = np.deg2rad(self._sample_range_value(self.directional_yaw_deg_range))
+        cos_pitch = np.cos(pitch)
+        local_dir = np.array(
+            [cos_pitch * np.cos(yaw), cos_pitch * np.sin(yaw), np.sin(pitch)],
+            dtype=np.float32,
+        )
+        base_quat = self._get_optional_state("base_quat", 4, default=np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32))
+        yaw_forward = self._yaw_forward_vec(base_quat)
+        yaw_left = np.array([-yaw_forward[1], yaw_forward[0]], dtype=np.float32)
+        world_dir = np.array(
+            [
+                yaw_forward[0] * local_dir[0] + yaw_left[0] * local_dir[1],
+                yaw_forward[1] * local_dir[0] + yaw_left[1] * local_dir[1],
+                local_dir[2],
+            ],
+            dtype=np.float32,
+        )
+        norm = float(np.linalg.norm(world_dir))
+        if norm < 1.0e-8:
+            world_dir = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+        else:
+            world_dir /= norm
+        return world_dir * float(speed)
+
     def _resample_internal_motion_command(self):
         self.current_is_forehand = bool(self.command_rng.uniform(0.0, 1.0) < 0.5)
         target_pose_range = (
@@ -264,6 +327,9 @@ class TrackMotionMovableBase(FSMState):
                 self._sample_range_value(target_pose_range["vel_z"]),
             ],
             dtype=np.float32,
+        )
+        self.current_racket_target_vel_w = self._sample_structured_velocity_direction(
+            self.current_racket_target_vel_w
         )
         self.current_base_target_pos = np.array(
             [
@@ -569,4 +635,4 @@ class TrackMotionMovableBase(FSMState):
             return FSMStateName.FIXEDPOSE
         else:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
-            return FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE
+            return self._default_state_name

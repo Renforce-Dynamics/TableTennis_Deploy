@@ -22,6 +22,7 @@ class FSMStateName(Enum):
     SKILL_TRACK_MOTION_ISAACLAB = 14
     SKILL_TRACK_MOTION_MJLAB = 15
     SKILL_TRACK_MOTION_MOVABLE_BASE = 16
+    SKILL_LANDING_ASSIST_FINETUNE = 17
    
 
 @unique
@@ -38,6 +39,13 @@ class FSMCommand(Enum):
     TRACK_MOTION_ISAACLAB = 10
     TRACK_MOTION_MJLAB = 11
     TRACK_MOTION_MOVABLE_BASE = 12
+    # Additional table-tennis / landing skills (added when the FSM was
+    # completed so that every registered FSMStateName can be reached from
+    # LocoMode via a distinct skill_cmd, not via the keyboard side-channel).
+    KUNGFU2 = 13
+    TABLE_TENNIS_DISTILL = 14
+    TABLE_TENNIS_REV_RACKET = 15
+    LANDING_ASSIST_FINETUNE = 16
     
     
     

@@ -1,5 +1,36 @@
 最直接用法如下。
 
+## 当前推荐：Track Motion Landing
+
+详细说明见 [`README_TRACK_MOTION_LANDING.md`](README_TRACK_MOTION_LANDING.md)。
+
+```bash
+uv run python deploy_mujoco/deploy_mujoco_landing.py \
+  --start-policy track_motion_movable_base \
+  --fixed-initial-ball \
+  --ball-pos 3.5 -0.2 1.0 \
+  --ball-vel -4.0 0.0 0.0 \
+  --debug-every 1
+```
+
+这条命令走当前主线：`track_motion_movable_base` + landing planner command injection。默认 `--planner-source mujoco`，会用 MuJoCo 自己向前滚动预测击球点，避免 planner 和 XML/contact 动力学不同步。
+
+注意：
+
+- 当前场景应使用 `g1_29dof_rev_1_0_racket.xml`。
+- 球拍 contact 应使用 `right_racket_collision`。
+- 不建议默认加 `--force-default-pose`。
+- 不建议把 landing 主线切到 `track_motion_mjlab`。
+
+真机 scaffold / dry-run：
+
+```bash
+uv run --group real python deploy_real/deploy_real_landing.py \
+  --policy track_motion_movable_base \
+  --dry-run \
+  --debug
+```
+
 **MuJoCo 里跑 distill**
 ```bash
 cd /home/infinite/RoboMimic_Deploy
