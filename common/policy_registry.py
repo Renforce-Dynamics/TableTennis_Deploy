@@ -98,3 +98,21 @@ def get_policy_choices(include_base=True, include_extra=True):
 def load_extra_policy_class(spec: ExtraPolicySpec):
     module = import_module(spec.class_path)
     return getattr(module, spec.attr_name)
+
+
+# Policies that consume the planner→policy LandingCommand bridge in
+# `deploy_mujoco_landing.py` and `deploy_mujoco_track_motion_movable_base.py`.
+LANDING_POLICY_STATES = (
+    FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE,
+    FSMStateName.SKILL_LANDING_ASSIST_FINETUNE,
+)
+
+
+def is_landing_policy(policy_name) -> bool:
+    """Accept either a string key (e.g. 'track_motion_mjlab') or an FSMStateName."""
+    if isinstance(policy_name, str):
+        try:
+            policy_name = get_policy_state(policy_name)
+        except KeyError:
+            return False
+    return policy_name in LANDING_POLICY_STATES

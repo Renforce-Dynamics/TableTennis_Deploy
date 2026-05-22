@@ -21,17 +21,18 @@ import yaml
 
 from common.ctrlcomp import PolicyOutput, StateAndCmd
 from common.landing_command import LandingCommandGenerator, apply_landing_command_to_state
-from common.policy_registry import get_policy_choices, get_policy_state
+from common.policy_registry import (
+    LANDING_POLICY_STATES,
+    get_policy_choices,
+    get_policy_state,
+    is_landing_policy,
+)
 from common.utils import FSMCommand, FSMStateName, get_gravity_orientation
 from FSM.FSM import FSM, FSMMode
 
 
 TABLE_POLICY_DEFAULT = "track_motion_movable_base"
 RACKET_GEOM_CANDIDATES = ("right_racket_collision", "right_hand_collision")
-LANDING_POLICY_STATES = (
-    FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE,
-    FSMStateName.SKILL_LANDING_ASSIST_FINETUNE,
-)
 
 
 class BallRespawnTracker:
@@ -122,10 +123,6 @@ class BallRespawnTracker:
             return "ball_rolling_on_table"
 
         return None
-
-
-def is_landing_policy(policy_state):
-    return policy_state in LANDING_POLICY_STATES
 
 
 def pd_control(target_q, q, kp, target_dq, dq, kd):
@@ -553,12 +550,10 @@ def print_debug(state_cmd, landing_cmd, contact_ball_racket, contact_ball_table,
     )
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Run track-motion landing sim2sim in MuJoCo.")
-    parser.add_argument("--start-policy", default=TABLE_POLICY_DEFAULT, choices=get_policy_choices())
-    parser.add_argument("--planner-config", default="deploy_mujoco/config/landing_planner.yaml")
-    parser.add_argument("--ball-pos", type=float, nargs=3, default=[3.5, -0.2, 1.0])
-    parser.add_argument("--ball-vel", type=float, nargs=3, default=[-4.0, 0.0, 0.0])
+def add_serve_args(parser, *, default_ball_pos=(3.5, -0.2, 1.0), default_ball_vel=(-4.0, 0.0, 0.0)):
+    """Initial ball pose + base height. Shared across all sim2sim entrypoints."""
+    parser.add_argument("--ball-pos", type=float, nargs=3, default=list(default_ball_pos))
+    parser.add_argument("--ball-vel", type=float, nargs=3, default=list(default_ball_vel))
     parser.add_argument("--fixed-initial-ball", action="store_true")
     parser.add_argument(
         "--base-height",
@@ -567,16 +562,31 @@ def parse_args():
         help="Initial robot base height; 0.76 matches the mjhitter training init_state.",
     )
     parser.add_argument(
+        "--force-default-pose",
+        action="store_true",
+        help="Force default_angles/base_height at reset. Off by default to match the proven track-motion deploy path.",
+    )
+
+
+def add_planner_args(parser):
+    """Landing-planner config + source + verbose printing."""
+    parser.add_argument("--planner-config", default="deploy_mujoco/config/landing_planner.yaml")
+    parser.add_argument(
         "--planner-source",
         choices=["mujoco", "model"],
         default="model",
         help="Use the model-based planner from LandingAssistFinetune by default; choose mujoco only for rollout-based comparison.",
     )
     parser.add_argument(
-        "--force-default-pose",
-        action="store_true",
-        help="Force default_angles/base_height at reset. Off by default to match the proven track-motion deploy path.",
+        "--debug-every",
+        type=int,
+        default=10,
+        help="Print planner status every N control ticks; 0 disables.",
     )
+
+
+def add_debug_strike_args(parser):
+    """Optional debug overrides that pin the commanded strike target."""
     parser.add_argument(
         "--debug-fixed-hit-y",
         type=float,
@@ -607,7 +617,104 @@ def parse_args():
         default=None,
         help="Optional debug override for commanded relative hit z.",
     )
-    parser.add_argument("--debug-every", type=int, default=10, help="Print planner status every N control ticks; 0 disables.")
+
+
+def apply_debug_strike_overrides(landing_generator, args):
+    """If --debug-fixed-hit-y is supplied, lock the planner to a front strike."""
+    if args.debug_fixed_hit_y is None:
+        return
+    landing_generator.configure_debug_fixed_front_strike(
+        enabled=True,
+        rel_hit_y=args.debug_fixed_hit_y,
+        front_speed=args.debug_front_speed,
+        front_pitch_deg=args.debug_front_pitch_deg,
+        rel_hit_x=args.debug_fixed_hit_x,
+        rel_hit_z=args.debug_fixed_hit_z,
+    )
+    print(
+        "[landing] debug fixed front strike enabled:",
+        f"rel_hit_y={args.debug_fixed_hit_y}",
+        f"speed={args.debug_front_speed}",
+        f"pitch_deg={args.debug_front_pitch_deg}",
+    )
+
+
+def clear_state_cmd_planner_fields(state_cmd):
+    """Wipe planner-only fields so non-landing policies don't read stale targets."""
+    state_cmd.base_pos_target = None
+    state_cmd.rel_racket_target_pos_w = None
+    state_cmd.racket_target_vel_w = None
+    state_cmd.racket_target_time = None
+    state_cmd.planner_valid = False
+
+
+def apply_pd_and_step(model, data, target_q, kps, kds, tau_limit, robot_qpos_slice, robot_qvel_slice):
+    """Compute PD torque, clip to tau_limit, write ctrl, advance one mj_step."""
+    tau = pd_control(
+        target_q,
+        data.qpos[robot_qpos_slice],
+        kps,
+        np.zeros_like(kps),
+        data.qvel[robot_qvel_slice],
+        kds,
+    )
+    if np.any(tau_limit > 0.0):
+        tau = np.clip(tau, -tau_limit, tau_limit)
+    data.ctrl[:] = tau
+    mujoco.mj_step(model, data)
+
+
+def run_control_tick(
+    model,
+    data,
+    state_cmd,
+    policy_output,
+    fsm_controller,
+    landing_generator,
+    robot_qpos_slice,
+    robot_qvel_slice,
+    *,
+    control_dt,
+    episode_time_s,
+    use_mujoco_predictor,
+):
+    """One control-rate update: refresh obs, push planner cmd, run policy.
+
+    Returns ``(policy_action, kps, kds, landing_cmd_or_None)``.
+    """
+    populate_state_cmd(model, data, state_cmd, robot_qpos_slice, robot_qvel_slice)
+    state_cmd.vel_cmd[:] = 0.0
+
+    landing_cmd = None
+    if is_landing_policy(fsm_controller.cur_policy.name):
+        landing_cmd = update_landing_command(
+            model,
+            data,
+            state_cmd,
+            landing_generator,
+            control_dt=control_dt,
+            episode_time_s=episode_time_s,
+            use_mujoco_predictor=use_mujoco_predictor,
+        )
+        apply_landing_command_to_state(state_cmd, landing_cmd)
+    else:
+        clear_state_cmd_planner_fields(state_cmd)
+
+    fsm_controller.run()
+    return (
+        policy_output.actions.copy(),
+        policy_output.kps.copy(),
+        policy_output.kds.copy(),
+        landing_cmd,
+    )
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run track-motion landing sim2sim in MuJoCo.")
+    parser.add_argument("--start-policy", default=TABLE_POLICY_DEFAULT, choices=get_policy_choices())
+    add_planner_args(parser)
+    add_serve_args(parser)
+    add_debug_strike_args(parser)
     return parser.parse_args()
 
 
@@ -632,21 +739,7 @@ if __name__ == "__main__":
     default_ball_pos = np.array(args.ball_pos, dtype=np.float32)
     default_ball_vel = np.array(args.ball_vel, dtype=np.float32)
     landing_generator = LandingCommandGenerator(args.planner_config)
-    if args.debug_fixed_hit_y is not None:
-        landing_generator.configure_debug_fixed_front_strike(
-            enabled=True,
-            rel_hit_y=args.debug_fixed_hit_y,
-            front_speed=args.debug_front_speed,
-            front_pitch_deg=args.debug_front_pitch_deg,
-            rel_hit_x=args.debug_fixed_hit_x,
-            rel_hit_z=args.debug_fixed_hit_z,
-        )
-        print(
-            "[landing] debug fixed front strike enabled:",
-            f"rel_hit_y={args.debug_fixed_hit_y}",
-            f"speed={args.debug_front_speed}",
-            f"pitch_deg={args.debug_front_pitch_deg}",
-        )
+    apply_debug_strike_overrides(landing_generator, args)
     respawn_tracker = BallRespawnTracker.from_landing_generator(landing_generator)
 
     initial_ball_pos, initial_ball_vel = sample_ball_reset_state(
@@ -740,47 +833,21 @@ if __name__ == "__main__":
                     switch_policy(fsm_controller, switch_requested[0])
                 switch_requested[0] = None
 
-            tau = pd_control(
-                policy_output_action,
-                data.qpos[robot_qpos_slice],
-                kps,
-                np.zeros_like(kps),
-                data.qvel[robot_qvel_slice],
-                kds,
+            apply_pd_and_step(
+                model, data,
+                policy_output_action, kps, kds, policy_output.tau_limit,
+                robot_qpos_slice, robot_qvel_slice,
             )
-            if np.any(policy_output.tau_limit > 0.0):
-                tau = np.clip(tau, -policy_output.tau_limit, policy_output.tau_limit)
-            data.ctrl[:] = tau
-            mujoco.mj_step(model, data)
             sim_counter += 1
 
             if sim_counter % control_decimation == 0:
-                populate_state_cmd(model, data, state_cmd, robot_qpos_slice, robot_qvel_slice)
-                state_cmd.vel_cmd[:] = 0.0
-
-                if is_landing_policy(fsm_controller.cur_policy.name):
-                    landing_cmd = update_landing_command(
-                        model,
-                        data,
-                        state_cmd,
-                        landing_generator,
-                        control_dt=control_dt,
-                        episode_time_s=sim_counter * simulation_dt,
-                        use_mujoco_predictor=args.planner_source == "mujoco",
-                    )
-                    apply_landing_command_to_state(state_cmd, landing_cmd)
-                else:
-                    state_cmd.base_pos_target = None
-                    state_cmd.rel_racket_target_pos_w = None
-                    state_cmd.racket_target_vel_w = None
-                    state_cmd.racket_target_time = None
-                    state_cmd.planner_valid = False
-                    landing_cmd = None
-
-                fsm_controller.run()
-                policy_output_action = policy_output.actions.copy()
-                kps = policy_output.kps.copy()
-                kds = policy_output.kds.copy()
+                policy_output_action, kps, kds, landing_cmd = run_control_tick(
+                    model, data, state_cmd, policy_output, fsm_controller, landing_generator,
+                    robot_qpos_slice, robot_qvel_slice,
+                    control_dt=control_dt,
+                    episode_time_s=sim_counter * simulation_dt,
+                    use_mujoco_predictor=args.planner_source == "mujoco",
+                )
 
                 contact_rb = has_racket_ball_contact(model, data)
                 contact_table = has_contact(model, data, "ball_geom", "table_top")
