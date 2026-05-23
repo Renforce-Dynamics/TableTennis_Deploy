@@ -1,9 +1,9 @@
-# deploy_blind_keyboard 与 deploy_real_track_motion 使用说明
+# deploy_blind_keyboard 与 track_motion 使用说明
 
 本文档包含两部分：
 
-- `python3 deploy_mujoco/deploy_blind_keyboard.py`（MuJoCo 键盘控制）
-- `python3 deploy_real/deploy_real_track_motion.py`（真机遥控控制）
+- `python3 sim2sim/blind_keyboard.py`（MuJoCo 键盘控制）
+- `python3 real/track_motion.py`（真机遥控控制）
 
 MuJoCo 部分重点覆盖以下三个任务/状态：
 
@@ -16,15 +16,15 @@ MuJoCo 部分重点覆盖以下三个任务/状态：
 在仓库根目录执行：
 
 ```bash
-python3 deploy_mujoco/deploy_blind_keyboard.py
+python3 sim2sim/blind_keyboard.py
 ```
 
 可选参数：
 
 ```bash
-python3 deploy_mujoco/deploy_blind_keyboard.py --start-policy loco
-python3 deploy_mujoco/deploy_blind_keyboard.py --start-policy track_motion_mjlab
-python3 deploy_mujoco/deploy_blind_keyboard.py --start-policy track_motion_movable_base
+python3 sim2sim/blind_keyboard.py --start-policy loco
+python3 sim2sim/blind_keyboard.py --start-policy track_motion_mjlab
+python3 sim2sim/blind_keyboard.py --start-policy track_motion_movable_base
 ```
 
 支持的 `--start-policy`：
@@ -130,29 +130,29 @@ python3 deploy_mujoco/deploy_blind_keyboard.py --start-policy track_motion_movab
 
 ### Q3: 想改步长/限幅
 
-- 步长在 `deploy_mujoco/deploy_blind_keyboard.py`：
+- 步长在 `sim2sim/blind_keyboard.py`：
   - `loco_step_x`, `loco_step_y`
   - `base_step_x`, `base_step_y`
 - `loco` 限幅来自 `policy/loco_mode/config/LocoMode.yaml`。
 - `track_motion_static` 的手动 base 限幅在脚本内为 `[-0.5, 0.5]`。
 
-## 6. deploy_real_track_motion 使用说明（真机）
+## 6. track_motion 使用说明（真机）
 
 脚本文件：
 
-- `deploy_real/deploy_real_track_motion.py`
+- `real/track_motion.py`
 
 ### 6.1 启动方式
 
 在仓库根目录执行：
 
 ```bash
-python3 deploy_real/deploy_real_track_motion.py
+python3 real/track_motion.py
 ```
 
 说明：
 
-- 使用 `deploy_real/config/real.yaml` 中的网络与 DDS topic 配置。
+- 使用 `configs/real/real.yaml` 中的网络与 DDS topic 配置。
 - 启动后默认直接进入 `loco`。
 
 ### 6.2 状态切换按键（遥控器）
@@ -190,7 +190,7 @@ python3 deploy_real/deploy_real_track_motion.py
 ### 6.4 快速测试流程（真机）
 
 ```text
-1) 启动 deploy_real_track_motion.py，确认终端打印默认进入 LOCO
+1) 启动 real/track_motion.py，确认终端打印默认进入 LOCO
 2) 摇左杆，确认 loco 可控 x/y
 3) 按 X+L1 进入静态击球，摇左杆 X，观察终端 target_base_y 变化
 4) 按 Y+L1 进入 movable base，观察机器人随机 y 移动击球

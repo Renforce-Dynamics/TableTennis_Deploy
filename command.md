@@ -4,7 +4,7 @@
 
 conda activate robomimic
 
-python deploy_mujoco/deploy_tennis_keyboard.py --table-policy table_tennis
+python sim2sim/tennis_keyboard.py --table-policy table_tennis
 
 键盘流程：
 
@@ -21,13 +21,13 @@ r：重置仿真
 如需查看输出 --debug-frames (num)
 
 
-已改好：`deploy_real_table_tennis.py` 现在不再启动后直接进乒乓任务，而是先进入 `passive_mode`，流程和 `deploy_real.py` 对齐。
+已改好：`real/table_tennis.py` 现在不再启动后直接进乒乓任务，而是先进入 `passive_mode`，流程和 `real/main.py` 对齐。
 
 使用方式：
 
 ```bash
-uv run --group real deploy_real/deploy_real_table_tennis.py --policy table_tennis_distill
-uv run --group real deploy_real/deploy_real_table_tennis.py --policy table_tennis_rev_racket
+uv run --group real real/table_tennis.py --policy table_tennis_distill
+uv run --group real real/table_tennis.py --policy table_tennis_rev_racket
 ```
 
 遥控流程：
@@ -58,8 +58,8 @@ Enter loco first, then press B+R1 to start table tennis.
 已验证：
 
 ```bash
-uv run --group real python -m py_compile deploy_real/deploy_real_table_tennis.py
-uv run --group real deploy_real/deploy_real_table_tennis.py --help
+uv run --group real python -m py_compile real/table_tennis.py
+uv run --group real real/table_tennis.py --help
 ```
 
 都通过。

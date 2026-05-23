@@ -30,7 +30,7 @@ If you are working on the current table-tennis / landing pipeline, this is the
 main MuJoCo entry script to use:
 
 ```bash
-python3 deploy_mujoco/deploy_tennis_keyboard.py \
+python3 sim2sim/tennis_keyboard.py \
   --start-policy track_motion_movable_base
 ```
 
@@ -38,10 +38,10 @@ It supports choosing the initial FSM state through `--start-policy`, for
 example:
 
 ```bash
-python3 deploy_mujoco/deploy_tennis_keyboard.py --start-policy passive
-python3 deploy_mujoco/deploy_tennis_keyboard.py --start-policy loco
-python3 deploy_mujoco/deploy_tennis_keyboard.py --start-policy track_motion_movable_base
-python3 deploy_mujoco/deploy_tennis_keyboard.py --start-policy landing_assist_finetune
+python3 sim2sim/tennis_keyboard.py --start-policy passive
+python3 sim2sim/tennis_keyboard.py --start-policy loco
+python3 sim2sim/tennis_keyboard.py --start-policy track_motion_movable_base
+python3 sim2sim/tennis_keyboard.py --start-policy landing_assist_finetune
 ```
 
 ### How startup and switching work
@@ -104,7 +104,7 @@ The current table-tennis landing work after PR #1 is documented in
 Recommended MuJoCo command:
 
 ```bash
-uv run python deploy_mujoco/deploy_tennis_keyboard.py \
+uv run python sim2sim/tennis_keyboard.py \
   --start-policy track_motion_movable_base \
   --fixed-initial-ball \
   --ball-pos 3.5 -0.2 1.0 \
@@ -121,19 +121,19 @@ Use `deploy_tennis_keyboard.py` to test the three table-tennis policies.
 Start with the default table-tennis policy:
 
 ```bash
-python3 deploy_mujoco/deploy_tennis_keyboard.py --start-policy loco --table-policy table_tennis
+python3 sim2sim/tennis_keyboard.py --start-policy loco --table-policy table_tennis
 ```
 
 Start with the distilled student policy:
 
 ```bash
-python3 deploy_mujoco/deploy_tennis_keyboard.py --start-policy loco --table-policy table_tennis_distill
+python3 sim2sim/tennis_keyboard.py --start-policy loco --table-policy table_tennis_distill
 ```
 
 Start with the rev-racket policy:
 
 ```bash
-python3 deploy_mujoco/deploy_tennis_keyboard.py --start-policy loco --table-policy table_tennis_rev_racket
+python3 sim2sim/tennis_keyboard.py --start-policy loco --table-policy table_tennis_rev_racket
 ```
 
 Runtime keyboard controls in the MuJoCo window:
@@ -171,10 +171,10 @@ The three table-tennis policies share the same deployment logic:
 Use `deploy_blind_keyboard.py` to test `loco` and track-motion policies:
 
 ```bash
-python3 deploy_mujoco/deploy_blind_keyboard.py --start-policy loco
-python3 deploy_mujoco/deploy_blind_keyboard.py --start-policy track_motion_mjlab
-python3 deploy_mujoco/deploy_blind_keyboard.py --start-policy track_motion_movable_base
-python3 deploy_mujoco/deploy_blind_keyboard.py --start-policy track_motion_isaaclab
+python3 sim2sim/blind_keyboard.py --start-policy loco
+python3 sim2sim/blind_keyboard.py --start-policy track_motion_mjlab
+python3 sim2sim/blind_keyboard.py --start-policy track_motion_movable_base
+python3 sim2sim/blind_keyboard.py --start-policy track_motion_isaaclab
 ```
 
 Click the MuJoCo window once before pressing keys so it has keyboard focus.

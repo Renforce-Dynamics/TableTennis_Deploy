@@ -81,7 +81,7 @@ uv pip install -e .
 
 ## 1. 运行Mujoco仿真代码
 ```bash
-python deploy_mujoco/deploy_blind_joystick.py
+python sim2sim/blind_joystick.py
 ```
 ---
 ## 2. Policy 说明
@@ -125,7 +125,7 @@ python deploy_mujoco/deploy_blind_joystick.py
 
 2. 运行仿真程序：
 ```bash
-python deploy_mujoco/deploy_blind_joystick.py
+python sim2sim/blind_joystick.py
 ```
 3. Start键进入位控模式
 
@@ -150,9 +150,9 @@ python deploy_mujoco/deploy_blind_joystick.py
 ## 5. 真机操作说明
 1. 开机后将机器人吊起来，按L2+R2进入调试模式
 
-2. 运行deploy_real程序：
+2. 运行real 入口：
 ```bash
-python deploy_real/deploy_real.py
+python real/main.py
 ```
 3. Start键进入位控模式
 
@@ -164,10 +164,10 @@ python deploy_real/deploy_real.py
 
 专用乒乓球部署程序：
 ```bash
-python deploy_real/deploy_real_table_tennis.py
+python real/table_tennis.py
 ```
 
-#### 遥控器按键映射 (deploy_real_table_tennis.py)
+#### 遥控器按键映射 (real/table_tennis.py)
 | 按键组合           | 动作                           | 说明                                  |
 |-------------------|--------------------------------|---------------------------------------|
 | **F1**            | 进入被动模式                    | 阻尼保护模式                           |

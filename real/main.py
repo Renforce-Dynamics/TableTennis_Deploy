@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent.absolute()))
+sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
 
 from common.path_config import PROJECT_ROOT
 from common.ctrlcomp import *
@@ -24,7 +24,7 @@ from unitree_sdk2py.utils.crc import CRC
 from common.command_helper import create_damping_cmd, create_zero_cmd, init_cmd_hg, init_cmd_go, MotorMode
 from common.rotation_helper import get_gravity_orientation_real, transform_imu_data
 from common.remote_controller import RemoteController, KeyMap
-from config import Config
+from real.config import Config
 
 
 class Controller:

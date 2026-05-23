@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).parent.parent.absolute()))
+sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
 
 from common.ctrlcomp import StateAndCmd, PolicyOutput
 from FSM.FSM import FSM, FSMStateName
@@ -20,7 +20,7 @@ from unitree_sdk2py.utils.crc import CRC
 from common.command_helper import create_damping_cmd, init_cmd_hg, MotorMode
 from common.rotation_helper import get_gravity_orientation_real
 from common.remote_controller import RemoteController, KeyMap
-from config import Config
+from real.config import Config
 
 
 class TrackMotionController:

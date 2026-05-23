@@ -1,11 +1,11 @@
-"""Joystick variant of deploy_tennis_keyboard.
+"""Joystick variant of tennis_keyboard.
 
 Stub: shares all simulation scaffolding (tennis XML scene, planner, ball
-lifecycle, respawn tracker, planner debug viz) with deploy_tennis_keyboard.
+lifecycle, respawn tracker, planner debug viz) with tennis_keyboard.
 The keyboard command-handling block is replaced by a JoyStick poll that maps
 buttons → FSMCommand skill_cmd.
 
-Button map (mirrors deploy_blind_joystick + adds the 3 newer table policies
+Button map (mirrors blind_joystick + adds the 3 newer table policies
 via D-pad):
   SELECT             -> exit
   L3                 -> PASSIVE
@@ -26,7 +26,7 @@ via D-pad):
 import sys
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).parent.parent.absolute()))
+sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
 
 from common.path_config import PROJECT_ROOT
 
@@ -47,12 +47,12 @@ from common.landing_command import LandingCommandGenerator
 from common.policy_registry import get_policy_choices
 from common.utils import FSMCommand
 
-from deploy_mujoco.deploy_tennis_keyboard import (
+from sim2sim.tennis_keyboard import (
     load_mujoco_config,
     reset_ball_only,
     sample_serve_state,
 )
-from deploy_mujoco.sim2sim_common import (
+from sim2sim.common import (
     BallRespawnTracker,
     add_debug_strike_args,
     add_planner_args,
@@ -74,7 +74,7 @@ from deploy_mujoco.sim2sim_common import (
 def parse_args():
     parser = argparse.ArgumentParser(description="Run table-tennis policies in MuJoCo with a joystick.")
     parser.add_argument("--start-policy", default="loco", choices=get_policy_choices())
-    parser.add_argument("--mujoco-config", default="deploy_mujoco/config/g1_track_motion_movable_base.yaml")
+    parser.add_argument("--mujoco-config", default="configs/sim/g1_track_motion_movable_base.yaml")
     add_planner_args(parser)
     add_serve_args(parser)
     parser.add_argument("--serve-x-range", type=float, nargs=2, default=None)

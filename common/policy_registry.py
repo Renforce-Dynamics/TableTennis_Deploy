@@ -101,7 +101,7 @@ def load_extra_policy_class(spec: ExtraPolicySpec):
 
 
 # Policies that consume the planner→policy LandingCommand bridge in the
-# table-tennis sim2sim entrypoints (deploy_tennis_keyboard / _joystick).
+# table-tennis sim2sim entrypoints (tennis_keyboard / _joystick).
 LANDING_POLICY_STATES = (
     FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE,
     FSMStateName.SKILL_LANDING_ASSIST_FINETUNE,

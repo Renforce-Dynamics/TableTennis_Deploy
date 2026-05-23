@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).parent.parent.absolute()))
+sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
 
 from common.path_config import PROJECT_ROOT
 
@@ -24,7 +24,7 @@ from common.policy_registry import (
 )
 from common.utils import FSMCommand, FSMStateName
 
-from deploy_mujoco.sim2sim_common import (
+from sim2sim.common import (
     BallRespawnTracker,
     add_debug_strike_args,
     add_planner_args,
@@ -70,7 +70,7 @@ def parse_args():
         choices=get_policy_choices(include_base=False),
         help="Policy entered by pressing 't' after loco. Number keys switch this selection.",
     )
-    parser.add_argument("--mujoco-config", default="deploy_mujoco/config/g1_track_motion_movable_base.yaml")
+    parser.add_argument("--mujoco-config", default="configs/sim/g1_track_motion_movable_base.yaml")
     add_planner_args(parser)
     add_serve_args(parser)
     parser.add_argument(

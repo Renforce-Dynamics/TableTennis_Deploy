@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent.absolute()))
+sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
 
 from common.path_config import PROJECT_ROOT
 
@@ -233,8 +233,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    mujoco_yaml_path = os.path.join(current_dir, "config", "mujoco.yaml")
+    mujoco_yaml_path = os.path.join(PROJECT_ROOT, "configs", "sim", "mujoco.yaml")
     with open(mujoco_yaml_path, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
         xml_path = os.path.join(PROJECT_ROOT, config["xml_path"])

@@ -195,7 +195,7 @@ class LandingCommandGenerator:
     @staticmethod
     def _load_config(config_path: str | Path | None) -> dict[str, Any]:
         if config_path is None:
-            config_path = Path(PROJECT_ROOT) / "deploy_mujoco" / "config" / "landing_planner.yaml"
+            config_path = Path(PROJECT_ROOT) / "configs" / "planner" / "landing_planner.yaml"
         path = Path(config_path)
         if not path.is_absolute():
             path = Path(PROJECT_ROOT) / path

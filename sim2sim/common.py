@@ -3,9 +3,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).parent.parent.absolute()))
+sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
 
-"""Shared sim2sim helpers used by deploy_tennis_keyboard/joystick entrypoints.
+"""Shared sim2sim helpers used by tennis_keyboard/joystick entrypoints.
 
 Library only — no ``__main__``. Holds the planner/landing bookkeeping,
 ball lifecycle, PD step, control-tick branch, and the shared argparse
@@ -260,7 +260,7 @@ def apply_initial_configuration(
 ):
     """Initialize exactly like the proven track-motion deployment path by default.
 
-    deploy_blind_keyboard.py leaves the robot at
+    sim2sim/blind_keyboard.py leaves the robot at
     the XML qpos0 for track-motion policies and only initializes the ball/marker.
     Forcing default_angles and a different base height here changes the startup
     distribution and can cause leg split/fall even with the same ONNX.
@@ -570,7 +570,7 @@ def add_serve_args(parser, *, default_ball_pos=(3.5, -0.2, 1.0), default_ball_ve
 
 def add_planner_args(parser):
     """Landing-planner config + source + verbose printing."""
-    parser.add_argument("--planner-config", default="deploy_mujoco/config/landing_planner.yaml")
+    parser.add_argument("--planner-config", default="configs/planner/landing_planner.yaml")
     parser.add_argument(
         "--planner-source",
         choices=["mujoco", "model"],

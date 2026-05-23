@@ -83,3 +83,6 @@ Desktop.ini
 *.log
 *.sqlite
 *.db
+
+# Vendored Unitree SDK (cloned by setup.sh, pulled in as editable path source)
+unitree_sdk2_python/

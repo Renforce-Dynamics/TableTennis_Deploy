@@ -42,11 +42,11 @@ command-conditioned track motion policy
   - `hope_planner.py`
 - `common/landing_command.py`
   把球状态、机器人 base 状态转换成底层策略吃的 command 字段。
-- `deploy_mujoco/deploy_tennis_keyboard.py`
+- `sim2sim/tennis_keyboard.py`
   landing 版 MuJoCo 入口，包含球、桌、网、planner、command 注入与调试显示。
-- `deploy_mujoco/deploy_tennis_keyboard.py`
+- `sim2sim/tennis_keyboard.py`
   适合切换多个 table-tennis / landing policy 的 MuJoCo 入口。
-- `deploy_mujoco/config/landing_planner.yaml`
+- `configs/planner/landing_planner.yaml`
   上层 planner、球桌、落点目标、时间窗口、命令分布等参数。
 
 ## 推荐启动方式
@@ -56,31 +56,31 @@ command-conditioned track motion policy
 推荐直接用这个脚本：
 
 ```bash
-python3 deploy_mujoco/deploy_tennis_keyboard.py \
+python3 sim2sim/tennis_keyboard.py \
   --start-policy track_motion_movable_base
 ```
 
 这个脚本支持通过 `--start-policy` 指定启动状态，例如：
 
 ```bash
-python3 deploy_mujoco/deploy_tennis_keyboard.py --start-policy passive
-python3 deploy_mujoco/deploy_tennis_keyboard.py --start-policy loco
-python3 deploy_mujoco/deploy_tennis_keyboard.py --start-policy track_motion_movable_base
-python3 deploy_mujoco/deploy_tennis_keyboard.py --start-policy landing_assist_finetune
+python3 sim2sim/tennis_keyboard.py --start-policy passive
+python3 sim2sim/tennis_keyboard.py --start-policy loco
+python3 sim2sim/tennis_keyboard.py --start-policy track_motion_movable_base
+python3 sim2sim/tennis_keyboard.py --start-policy landing_assist_finetune
 ```
 
 当前默认：
 
 - `--planner-source model`
-- 使用 `deploy_mujoco/config/g1_track_motion_movable_base.yaml`
-- 使用 `deploy_mujoco/config/landing_planner.yaml`
+- 使用 `configs/sim/g1_track_motion_movable_base.yaml`
+- 使用 `configs/planner/landing_planner.yaml`
 
 ### 2. 直接跑 landing 单入口
 
 如果你只想单独跑 landing 主线，也可以：
 
 ```bash
-python3 deploy_mujoco/deploy_tennis_keyboard.py \
+python3 sim2sim/tennis_keyboard.py \
   --start-policy track_motion_movable_base
 ```
 
@@ -97,7 +97,7 @@ uv run python -m mjlab.scripts.play Mjlab-Table-Tennis-Unitree-G1-LandingAssistF
 对应当前仓库里的入口是：
 
 ```bash
-python3 deploy_mujoco/deploy_tennis_keyboard.py \
+python3 sim2sim/tennis_keyboard.py \
   --start-policy landing_assist_finetune
 ```
 
@@ -156,15 +156,15 @@ python3 deploy_mujoco/deploy_tennis_keyboard.py \
 
 这部分主要在：
 
-- `deploy_mujoco/deploy_tennis_keyboard.py`
-- `deploy_mujoco/deploy_tennis_keyboard.py`
+- `sim2sim/tennis_keyboard.py`
+- `sim2sim/tennis_keyboard.py`
 
 ## 直给调试模式
 
 如果你想强制测试“固定击球 `y`，并让 rot/vel 朝正前方”，可以直接加调试参数：
 
 ```bash
-python3 deploy_mujoco/deploy_tennis_keyboard.py \
+python3 sim2sim/tennis_keyboard.py \
   --start-policy track_motion_movable_base \
   --debug-fixed-hit-y -0.4 \
   --debug-front-speed 1.5 \
@@ -184,7 +184,7 @@ python3 deploy_mujoco/deploy_tennis_keyboard.py \
 
 主配置文件：
 
-- `deploy_mujoco/config/landing_planner.yaml`
+- `configs/planner/landing_planner.yaml`
 
 几个最常用的参数：
 
@@ -212,7 +212,7 @@ python3 deploy_mujoco/deploy_tennis_keyboard.py \
 - XML 根位置
   `g1_description/g1_track_motion_movable_base.xml`
 - planner 击球平面
-  `deploy_mujoco/config/landing_planner.yaml` 中的 `planner.x_hit`
+  `configs/planner/landing_planner.yaml` 中的 `planner.x_hit`
 
 当前配置里：
 
@@ -242,7 +242,7 @@ python3 deploy_mujoco/deploy_tennis_keyboard.py \
 
 实现位置：
 
-- `deploy_mujoco/deploy_tennis_keyboard.py`
+- `sim2sim/tennis_keyboard.py`
   `BallRespawnTracker`
 
 ## 已知注意事项
@@ -266,8 +266,8 @@ python3 deploy_mujoco/deploy_tennis_keyboard.py \
 python3 -m py_compile \
   common/landing_command.py \
   common/policy_registry.py \
-  deploy_mujoco/deploy_tennis_keyboard.py \
-  deploy_mujoco/deploy_tennis_keyboard.py \
+  sim2sim/tennis_keyboard.py \
+  sim2sim/tennis_keyboard.py \
   policy/track_motion_movable_base/TrackMotionMovableBase.py
 ```
 
