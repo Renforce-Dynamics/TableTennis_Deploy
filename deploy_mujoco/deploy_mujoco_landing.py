@@ -30,17 +30,31 @@ TABLE_POLICY_DEFAULT = "track_motion_movable_base"
 RACKET_GEOM_CANDIDATES = ("right_racket_collision", "right_hand_collision")
 LANDING_POLICY_STATES = (
     FSMStateName.SKILL_TRACK_MOTION_MOVABLE_BASE,
+    FSMStateName.SKILL_TRACK_MOTION_MJLAB,
     FSMStateName.SKILL_LANDING_ASSIST_FINETUNE,
+)
+PLANNER_HIT_MARKER_RADIUS = 0.035
+PLANNER_DIRECTION_ARROW_LEN = 0.35
+PLANNER_VELOCITY_ARROW_LEN = 0.25
+ROBOT_JOINT_NAMES = (
+    "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint",
+    "left_ankle_pitch_joint", "left_ankle_roll_joint", "right_hip_pitch_joint", "right_hip_roll_joint",
+    "right_hip_yaw_joint", "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
+    "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint", "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint", "left_wrist_roll_joint",
+    "left_wrist_pitch_joint", "left_wrist_yaw_joint", "right_shoulder_pitch_joint", "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint", "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint",
+    "right_wrist_yaw_joint",
 )
 
 
 class BallRespawnTracker:
-    """Track stricter rally-end conditions for deployment re-serves.
+    """Compatibility tracker used by the newer movable-base MuJoCo entrypoint.
 
-    We keep the original out-of-bounds reset as a final fallback, but end the
-    rally earlier in two common "finished" cases:
-      1) after the robot has contacted the ball, the outgoing ball reaches the net;
-      2) the ball stays in sustained table contact and effectively rolls/rests.
+    `deploy_mujoco_track_motion_movable_base.py` imports this symbol from here.
+    The reference landing path itself still resets only on manual reset or demo
+    area exit, so adding the class preserves the export without changing this
+    script's reference behavior.
     """
 
     def __init__(
@@ -97,7 +111,6 @@ class BallRespawnTracker:
         ball_pos = np.asarray(get_ball_pos(model, data), dtype=np.float64).reshape(3)
         ball_vel = np.asarray(get_ball_vel(model, data), dtype=np.float64).reshape(3)
 
-        # End the rally once the returned ball reaches the net plane region.
         if self._seen_racket_ball_contact and ball_pos[0] >= (self.net_x - self.net_reset_margin):
             self._table_contact_elapsed_s = 0.0
             return "ball_reached_net_after_hit"
@@ -126,6 +139,41 @@ class BallRespawnTracker:
 
 def is_landing_policy(policy_state):
     return policy_state in LANDING_POLICY_STATES
+
+
+def get_mjlab_joint_armature(joint_name):
+    if joint_name.endswith("_hip_roll_joint") or joint_name.endswith("_knee_joint"):
+        return 0.025101924999999997
+    if (
+        joint_name.endswith("_hip_pitch_joint")
+        or joint_name.endswith("_hip_yaw_joint")
+        or joint_name == "waist_yaw_joint"
+    ):
+        return 0.01017752004132231
+    if (
+        joint_name.endswith("_ankle_pitch_joint")
+        or joint_name.endswith("_ankle_roll_joint")
+        or joint_name in ("waist_pitch_joint", "waist_roll_joint")
+    ):
+        return 0.00721945
+    if joint_name.endswith("_wrist_pitch_joint") or joint_name.endswith("_wrist_yaw_joint"):
+        return 0.00425
+    return 0.003609725
+
+
+def apply_mjlab_joint_dynamics(model):
+    """Match MJLab's robot articulation armature/friction settings."""
+    changed = 0
+    for joint_name in ROBOT_JOINT_NAMES:
+        joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+        if joint_id == -1:
+            continue
+        dof_id = model.jnt_dofadr[joint_id]
+        model.dof_armature[dof_id] = get_mjlab_joint_armature(joint_name)
+        model.dof_frictionloss[dof_id] = 0.0
+        model.dof_damping[dof_id] = 0.0
+        changed += 1
+    return changed
 
 
 def pd_control(target_q, q, kp, target_dq, dq, kd):
@@ -197,7 +245,7 @@ def sample_ball_reset_state(rng, default_ball_pos, default_ball_vel, fixed_initi
         return default_ball_pos.copy(), default_ball_vel.copy()
     ball_pos = default_ball_pos.copy()
     ball_vel = default_ball_vel.copy()
-    ball_pos[1] += rng.uniform(-0.7625, 0.7625)
+    ball_pos[1] += rng.uniform(-0.5, 0.0)
     return ball_pos, ball_vel
 
 
@@ -219,15 +267,6 @@ def quat_rotate_inverse(quat_wxyz, vec_xyz):
     uv = np.cross(qvec, vec)
     uuv = np.cross(qvec, uv)
     return vec - 2.0 * (qw * uv + uuv)
-
-
-def yaw_rotate_inverse(quat_wxyz, vec_xyz):
-    qw, qx, qy, qz = np.asarray(quat_wxyz, dtype=np.float64).reshape(4)
-    yaw = np.arctan2(2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy * qy + qz * qz))
-    c = np.cos(-yaw)
-    s = np.sin(-yaw)
-    x, y, z = np.asarray(vec_xyz, dtype=np.float64).reshape(3)
-    return np.array([c * x - s * y, s * x + c * y, z], dtype=np.float64)
 
 
 def populate_state_cmd(model, data, state_cmd, robot_qpos_slice, robot_qvel_slice):
@@ -381,6 +420,71 @@ def has_racket_ball_contact(model, data):
     return False
 
 
+def add_visual_sphere(scene, pos, radius, rgba):
+    if scene.ngeom >= scene.maxgeom:
+        return
+    geom = scene.geoms[scene.ngeom]
+    mujoco.mjv_initGeom(
+        geom,
+        mujoco.mjtGeom.mjGEOM_SPHERE,
+        np.array([radius, 0.0, 0.0], dtype=np.float64),
+        np.asarray(pos, dtype=np.float64),
+        np.eye(3, dtype=np.float64).reshape(-1),
+        np.asarray(rgba, dtype=np.float32),
+    )
+    scene.ngeom += 1
+
+
+def add_visual_arrow(scene, start, direction, length, width, rgba):
+    direction = np.asarray(direction, dtype=np.float64).reshape(3)
+    norm = float(np.linalg.norm(direction))
+    if norm < 1.0e-8 or not np.all(np.isfinite(direction)) or scene.ngeom >= scene.maxgeom:
+        return
+    start = np.asarray(start, dtype=np.float64).reshape(3)
+    end = start + direction / norm * float(length)
+    geom = scene.geoms[scene.ngeom]
+    mujoco.mjv_connector(
+        geom,
+        mujoco.mjtGeom.mjGEOM_ARROW,
+        float(width),
+        start,
+        end,
+    )
+    geom.rgba[:] = np.asarray(rgba, dtype=np.float32)
+    scene.ngeom += 1
+
+
+def draw_landing_planner_visuals(viewer, landing_cmd):
+    if not hasattr(viewer, "user_scn"):
+        return
+    scene = viewer.user_scn
+    scene.ngeom = 0
+    if landing_cmd is None or not landing_cmd.valid:
+        return
+
+    hit_pos = np.asarray(landing_cmd.predicted_hit_ball_pos_w, dtype=np.float64).reshape(3)
+    if not np.all(np.isfinite(hit_pos)):
+        return
+
+    add_visual_sphere(scene, hit_pos, PLANNER_HIT_MARKER_RADIUS, [1.0, 0.1, 0.85, 0.85])
+    add_visual_arrow(
+        scene,
+        hit_pos,
+        landing_cmd.desired_ball_dir_w,
+        PLANNER_DIRECTION_ARROW_LEN,
+        0.012,
+        [1.0, 0.9, 0.05, 0.9],
+    )
+    add_visual_arrow(
+        scene,
+        hit_pos,
+        landing_cmd.racket_target_vel_w,
+        PLANNER_VELOCITY_ARROW_LEN,
+        0.008,
+        [0.0, 0.85, 1.0, 0.8],
+    )
+
+
 def predict_ball_hit_mujoco(model, data, x_hit, max_predict_time):
     """Roll out the current MuJoCo scene to predict the ball crossing x_hit."""
     ball_joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "ball_freejoint")
@@ -445,7 +549,6 @@ def update_landing_command(
                 ball_pos_w=state_cmd.ball_pos,
                 ball_vel_w=state_cmd.ball_vel,
                 robot_base_pos_w=state_cmd.base_pos,
-                robot_base_quat_wxyz=state_cmd.base_quat,
                 dt=control_dt,
                 episode_time_s=episode_time_s,
             )
@@ -460,95 +563,24 @@ def update_landing_command(
     )
 
 
-def _unit(vec):
-    vec = np.asarray(vec, dtype=np.float64).reshape(3)
-    norm = float(np.linalg.norm(vec))
-    if norm < 1.0e-8:
-        return None
-    return vec / norm
-
-
-def _racket_rot_debug(model, data, state_cmd, landing_cmd):
-    target = _unit(landing_cmd.racket_target_vel_w)
-    if target is None:
-        return None
-
-    geom_id = -1
-    geom_name = ""
-    for candidate in RACKET_GEOM_CANDIDATES:
-        geom_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, candidate)
-        if geom_id != -1:
-            geom_name = candidate
-            break
-    if geom_id == -1:
-        return None
-
-    xmat = np.asarray(data.geom_xmat[geom_id], dtype=np.float64).reshape(3, 3)
-    local_z_w = _unit(xmat[:, 2])
-    if local_z_w is None:
-        return None
-
-    face_axis = getattr(state_cmd, "racket_face_axis_local", None)
-    face_axis_name = getattr(state_cmd, "racket_face_axis_name", None)
-    if face_axis is None:
-        face_axis = np.array([0.0, 0.0, 1.0 if getattr(state_cmd, "is_forehand", True) else -1.0])
-        face_axis_name = "z" if getattr(state_cmd, "is_forehand", True) else "-z"
-    face_axis = np.asarray(face_axis, dtype=np.float64).reshape(3)
-    selected_normal = _unit(xmat @ face_axis)
-    if selected_normal is None:
-        return None
-
-    dot_pos_z = float(np.dot(local_z_w, target))
-    dot_neg_z = float(np.dot(-local_z_w, target))
-    dot_selected = float(np.dot(selected_normal, target))
-    vel_w = np.asarray(landing_cmd.racket_target_vel_w, dtype=np.float64).reshape(3)
-    normal_w = np.asarray(getattr(landing_cmd, "desired_racket_normal_w", vel_w), dtype=np.float64).reshape(3)
-    normal_target = _unit(normal_w)
-    dot_normal = float(np.dot(selected_normal, normal_target)) if normal_target is not None else 0.0
-    vel_yaw_b = yaw_rotate_inverse(getattr(state_cmd, "base_quat", np.array([1.0, 0.0, 0.0, 0.0])), vel_w)
-    normal_yaw_b = yaw_rotate_inverse(getattr(state_cmd, "base_quat", np.array([1.0, 0.0, 0.0, 0.0])), normal_w)
-    dot_for_angle = float(np.clip(dot_selected, -1.0, 1.0))
-    angle_deg = float(np.degrees(np.arccos(dot_for_angle)))
-    return (
-        " geom={} stroke={} face_axis={} dot(+Z,target)={:.3f} "
-        "dot(-Z,target)={:.3f} dot(selected,target)={:.3f} angle_deg={:.1f} "
-        "dot(selected,normal)={:.3f} vel_yaw_b={} normal_yaw_b={}"
-    ).format(
-        geom_name,
-        "forehand" if getattr(state_cmd, "is_forehand", True) else "backhand",
-        face_axis_name,
-        dot_pos_z,
-        dot_neg_z,
-        dot_selected,
-        angle_deg,
-        dot_normal,
-        np.round(vel_yaw_b, 3).tolist(),
-        np.round(normal_yaw_b, 3).tolist(),
-    )
-
-
 def print_debug(state_cmd, landing_cmd, contact_ball_racket, contact_ball_table, model=None, data=None):
-    rot_debug = ""
-    if model is not None and data is not None:
-        rot_msg = _racket_rot_debug(model, data, state_cmd, landing_cmd)
-        if rot_msg is not None:
-            rot_debug = " rot:{}".format(rot_msg)
+    del model, data
     print(
         "[landing] valid={} reason={} t_hit={:.3f} base_tgt={} racket_pos={} racket_vel={} "
-        "racket_normal={} ball={} vel={} hit={} contact_rb={} contact_table={}{}".format(
+        "ball={} vel={} hit={} dir={} forehand={} contact_rb={} contact_table={}".format(
             landing_cmd.valid,
             landing_cmd.reason,
             float(landing_cmd.racket_target_time[0]),
             np.round(landing_cmd.base_pos_target, 3).tolist(),
             np.round(landing_cmd.rel_racket_target_pos_w, 3).tolist(),
             np.round(landing_cmd.racket_target_vel_w, 3).tolist(),
-            np.round(getattr(landing_cmd, "desired_racket_normal_w", np.zeros(3)), 3).tolist(),
             np.round(state_cmd.ball_pos, 3).tolist(),
             np.round(state_cmd.ball_vel, 3).tolist(),
             np.round(landing_cmd.predicted_hit_ball_pos_w, 3).tolist(),
+            np.round(landing_cmd.desired_ball_dir_w, 3).tolist(),
+            landing_cmd.is_forehand,
             contact_ball_racket,
             contact_ball_table,
-            rot_debug,
         )
     )
 
@@ -560,52 +592,17 @@ def parse_args():
     parser.add_argument("--ball-pos", type=float, nargs=3, default=[3.5, -0.2, 1.0])
     parser.add_argument("--ball-vel", type=float, nargs=3, default=[-4.0, 0.0, 0.0])
     parser.add_argument("--fixed-initial-ball", action="store_true")
-    parser.add_argument(
-        "--base-height",
-        type=float,
-        default=0.76,
-        help="Initial robot base height; 0.76 matches the mjhitter training init_state.",
-    )
+    parser.add_argument("--base-height", type=float, default=0.793)
     parser.add_argument(
         "--planner-source",
         choices=["mujoco", "model"],
-        default="model",
-        help="Use the model-based planner from LandingAssistFinetune by default; choose mujoco only for rollout-based comparison.",
+        default="mujoco",
+        help="Use MuJoCo rollout for sim2sim ball prediction, or the portable model-based planner.",
     )
     parser.add_argument(
         "--force-default-pose",
         action="store_true",
         help="Force default_angles/base_height at reset. Off by default to match the proven track-motion deploy path.",
-    )
-    parser.add_argument(
-        "--debug-fixed-hit-y",
-        type=float,
-        default=None,
-        help="Debug override: force the commanded hit relative-y to this value, e.g. -0.4.",
-    )
-    parser.add_argument(
-        "--debug-front-speed",
-        type=float,
-        default=1.5,
-        help="Debug override speed magnitude for the front-facing strike command.",
-    )
-    parser.add_argument(
-        "--debug-front-pitch-deg",
-        type=float,
-        default=0.0,
-        help="Debug override pitch angle in degrees for the front-facing strike command.",
-    )
-    parser.add_argument(
-        "--debug-fixed-hit-x",
-        type=float,
-        default=None,
-        help="Optional debug override for commanded relative hit x.",
-    )
-    parser.add_argument(
-        "--debug-fixed-hit-z",
-        type=float,
-        default=None,
-        help="Optional debug override for commanded relative hit z.",
     )
     parser.add_argument("--debug-every", type=int, default=10, help="Print planner status every N control ticks; 0 disables.")
     return parser.parse_args()
@@ -623,6 +620,9 @@ if __name__ == "__main__":
     control_dt = simulation_dt * control_decimation
 
     model = mujoco.MjModel.from_xml_path(xml_path)
+    num_dynamics_joints = apply_mjlab_joint_dynamics(model)
+    if num_dynamics_joints:
+        print(f"Applied MJLab joint dynamics to {num_dynamics_joints} joints.")
     data = mujoco.MjData(model)
     model.opt.timestep = simulation_dt
     num_joints = model.nu
@@ -632,22 +632,6 @@ if __name__ == "__main__":
     default_ball_pos = np.array(args.ball_pos, dtype=np.float32)
     default_ball_vel = np.array(args.ball_vel, dtype=np.float32)
     landing_generator = LandingCommandGenerator(args.planner_config)
-    if args.debug_fixed_hit_y is not None:
-        landing_generator.configure_debug_fixed_front_strike(
-            enabled=True,
-            rel_hit_y=args.debug_fixed_hit_y,
-            front_speed=args.debug_front_speed,
-            front_pitch_deg=args.debug_front_pitch_deg,
-            rel_hit_x=args.debug_fixed_hit_x,
-            rel_hit_z=args.debug_fixed_hit_z,
-        )
-        print(
-            "[landing] debug fixed front strike enabled:",
-            f"rel_hit_y={args.debug_fixed_hit_y}",
-            f"speed={args.debug_front_speed}",
-            f"pitch_deg={args.debug_front_pitch_deg}",
-        )
-    respawn_tracker = BallRespawnTracker.from_landing_generator(landing_generator)
 
     initial_ball_pos, initial_ball_vel = sample_ball_reset_state(
         rng, default_ball_pos, default_ball_vel, args.fixed_initial_ball
@@ -674,7 +658,6 @@ if __name__ == "__main__":
         force_default_pose=args.force_default_pose,
         use_mujoco_predictor=args.planner_source == "mujoco",
     )
-    respawn_tracker.reset()
 
     reset_requested = [False]
     switch_requested = [None]
@@ -698,14 +681,13 @@ if __name__ == "__main__":
             switch_requested[0] = "passive"
 
     print("Keyboard: r=reset, l=loco, t=landing policy, v=track_motion_movable_base, n=track_motion_mjlab, p=passive")
+    print("Planner visuals: magenta sphere=hit point, yellow arrow=desired ball direction, cyan arrow=racket velocity.")
 
+    latest_landing_cmd = None
     with mujoco.viewer.launch_passive(model, data, key_callback=key_callback) as viewer:
         while viewer.is_running():
             step_start = time.time()
-            rally_end_reason = respawn_tracker.update(model, data, simulation_dt)
-            if rally_end_reason is not None:
-                print(f"[landing] respawn: {rally_end_reason}")
-            if reset_requested[0] or rally_end_reason is not None or ball_is_outside_demo_area(model, data):
+            if reset_requested[0] or ball_is_outside_demo_area(model, data):
                 ball_pos, ball_vel = sample_ball_reset_state(
                     rng, default_ball_pos, default_ball_vel, args.fixed_initial_ball
                 )
@@ -732,7 +714,7 @@ if __name__ == "__main__":
                         force_default_pose=args.force_default_pose,
                         use_mujoco_predictor=args.planner_source == "mujoco",
                     )
-                respawn_tracker.reset()
+                    latest_landing_cmd = None
                 reset_requested[0] = False
 
             if switch_requested[0] is not None:
@@ -769,6 +751,7 @@ if __name__ == "__main__":
                         use_mujoco_predictor=args.planner_source == "mujoco",
                     )
                     apply_landing_command_to_state(state_cmd, landing_cmd)
+                    latest_landing_cmd = landing_cmd
                 else:
                     state_cmd.base_pos_target = None
                     state_cmd.rel_racket_target_pos_w = None
@@ -776,6 +759,7 @@ if __name__ == "__main__":
                     state_cmd.racket_target_time = None
                     state_cmd.planner_valid = False
                     landing_cmd = None
+                    latest_landing_cmd = None
 
                 fsm_controller.run()
                 policy_output_action = policy_output.actions.copy()
@@ -787,8 +771,10 @@ if __name__ == "__main__":
                 if landing_cmd is not None and args.debug_every > 0:
                     control_tick = sim_counter // control_decimation
                     if control_tick % args.debug_every == 0 or contact_rb:
-                        print_debug(state_cmd, landing_cmd, contact_rb, contact_table, model, data)
+                        print_debug(state_cmd, landing_cmd, contact_rb, contact_table)
 
+            with viewer.lock():
+                draw_landing_planner_visuals(viewer, latest_landing_cmd)
             viewer.sync()
             time_until_next_step = model.opt.timestep - (time.time() - step_start)
             if time_until_next_step > 0:
